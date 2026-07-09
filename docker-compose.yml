@@ -1,0 +1,11 @@
+services:
+  ta14-api:
+    build: .
+    container_name: ta14-api-sandbox
+    ports:
+      - "8000:8000"
+    environment:
+      TA14_MODE: sandbox
+      TA14_RATE_LIMIT_ENABLED: "false"
+      TA14_AUDIT_LOG: "false"
+      CORS_ALLOW_ORIGINS: "*"
