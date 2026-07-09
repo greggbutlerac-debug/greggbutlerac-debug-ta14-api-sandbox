@@ -1,0 +1,14 @@
+{
+  "evidence_name": "Vendor model audit packet",
+  "evidence_claim": "The vendor claims the agent route is fully auditable and safe for procurement approval.",
+  "source_known": true,
+  "record_preserved": true,
+  "continuity_intact": false,
+  "tamper_resistant": true,
+  "independently_reviewable": false,
+  "linked_to_consequence": true,
+  "metadata": {
+    "example": true,
+    "domain": "evidence review"
+  }
+}
