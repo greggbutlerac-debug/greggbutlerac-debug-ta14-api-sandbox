@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: ta14-api-sandbox
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: TA14_MODE
+        value: sandbox
+      - key: TA14_RATE_LIMIT_ENABLED
+        value: "true"
+      - key: TA14_RATE_LIMIT_MAX
+        value: "60"
+      - key: TA14_RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      - key: TA14_AUDIT_LOG
+        value: "false"
+      - key: CORS_ALLOW_ORIGINS
+        value: "*"
