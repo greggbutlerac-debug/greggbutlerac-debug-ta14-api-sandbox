@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
+from datetime import datetime, timezone
 from typing import Callable
 from uuid import uuid4
 
@@ -9,6 +12,11 @@ from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+
+try:
+    import redis
+except ImportError:  # pragma: no cover
+    redis = None
 
 from .engine import (
     API_VERSION,
@@ -45,6 +53,118 @@ RATE_LIMITER = SandboxRateLimiter(make_usage_store())
 AUDIT_LOG_ENABLED = os.getenv("TA14_AUDIT_LOG", "false").lower() == "true"
 AUDIT_LOG_PATH = os.getenv("TA14_AUDIT_LOG_PATH", "./ta14_audit_log.jsonl")
 CORS_ALLOW_ORIGINS = os.getenv("CORS_ALLOW_ORIGINS", "*")
+
+
+class UsageAnalytics:
+    """Privacy-preserving aggregate API usage analytics.
+
+    Stores only aggregate counts by day, endpoint, decision, and plan.
+    It does not store request bodies, IP addresses, API keys, or identities.
+    Redis is used when TA14_REDIS_URL/REDIS_URL is configured; otherwise
+    the dashboard remains available with in-memory counts that reset on deploy.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._memory: dict[str, dict[str, int]] = {}
+        self._redis = None
+        url = (os.getenv("TA14_REDIS_URL") or os.getenv("REDIS_URL") or "").strip()
+        if url and redis is not None:
+            try:
+                client = redis.Redis.from_url(url, decode_responses=True)
+                client.ping()
+                self._redis = client
+            except Exception:
+                self._redis = None
+
+    @staticmethod
+    def _day(now: datetime | None = None) -> str:
+        return (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
+
+    @staticmethod
+    def _fields(endpoint: str, decision: str, plan: str) -> list[str]:
+        return [
+            "total",
+            f"decision:{decision}",
+            f"endpoint:{endpoint}",
+            f"plan:{plan}",
+        ]
+
+    def record(self, endpoint: str, decision: str, plan: str) -> None:
+        day = self._day()
+        fields = self._fields(endpoint, decision, plan)
+        if self._redis is not None:
+            pipe = self._redis.pipeline()
+            for key in ("ta14:stats:all", f"ta14:stats:day:{day}"):
+                for field in fields:
+                    pipe.hincrby(key, field, 1)
+            pipe.expire(f"ta14:stats:day:{day}", 60 * 60 * 24 * 120)
+            pipe.execute()
+            return
+
+        with self._lock:
+            for key in ("all", f"day:{day}"):
+                bucket = self._memory.setdefault(key, {})
+                for field in fields:
+                    bucket[field] = bucket.get(field, 0) + 1
+
+    def _read_bucket(self, key: str) -> dict[str, int]:
+        if self._redis is not None:
+            raw = self._redis.hgetall(key)
+            return {str(k): int(v) for k, v in raw.items()}
+        with self._lock:
+            return dict(self._memory.get(key.replace("ta14:stats:", ""), {}))
+
+    @staticmethod
+    def _group(bucket: dict[str, int], prefix: str) -> dict[str, int]:
+        return {
+            key[len(prefix):]: value
+            for key, value in bucket.items()
+            if key.startswith(prefix)
+        }
+
+    def snapshot(self) -> dict:
+        day = self._day()
+        all_time = self._read_bucket("ta14:stats:all" if self._redis is not None else "all")
+        today = self._read_bucket(
+            f"ta14:stats:day:{day}" if self._redis is not None else f"day:{day}"
+        )
+        return {
+            "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+            "storage": "persistent" if self._redis is not None else "in_memory",
+            "privacy": "Aggregate counts only. No request bodies, IP addresses, API keys, or identities are exposed.",
+            "all_time": {
+                "total": all_time.get("total", 0),
+                "decisions": self._group(all_time, "decision:"),
+                "endpoints": self._group(all_time, "endpoint:"),
+                "plans": self._group(all_time, "plan:"),
+            },
+            "today": {
+                "date_utc": day,
+                "total": today.get("total", 0),
+                "decisions": self._group(today, "decision:"),
+                "endpoints": self._group(today, "endpoint:"),
+                "plans": self._group(today, "plan:"),
+            },
+        }
+
+
+USAGE_ANALYTICS = UsageAnalytics()
+
+
+def _usage_plan(x_api_key: str | None) -> str:
+    if not x_api_key:
+        return "anonymous_sandbox"
+    identity = API_KEY_REGISTRY.resolve(x_api_key)
+    return identity.plan if identity else "invalid_key"
+
+
+def _record_usage(endpoint: str, decision: Decision, x_api_key: str | None) -> None:
+    try:
+        USAGE_ANALYTICS.record(endpoint, decision.value, _usage_plan(x_api_key))
+    except Exception:
+        # Analytics must never interrupt the evaluation API.
+        pass
 
 
 app = FastAPI(
@@ -753,6 +873,7 @@ def _shell(title: str, subtitle: str, body: str) -> str:
         <a href="/chain">24-Link Chain</a>
         <a href="/decision-matrix">Decision Matrix</a>
         <a href="/api-reference">API Reference</a>
+        <a href="/stats">Usage Dashboard</a>
         <a href="/boundary">Boundary</a>
         <a href="/docs">Interactive Tester</a>
       </div>
@@ -1240,6 +1361,107 @@ def boundary_page():
     return _shell("TA-14 Public API Boundary", "Human-readable boundary page for the TA-14 API Sandbox.", body)
 
 
+@app.get("/v1/usage-stats", tags=["System"], summary="Public aggregate API usage statistics")
+def usage_stats():
+    return USAGE_ANALYTICS.snapshot()
+
+
+@app.get("/stats", response_class=HTMLResponse, include_in_schema=False)
+def stats_page():
+    body = r"""
+<section class="hero">
+  <div class="hero-grid">
+    <div>
+      <p class="eyebrow"><span class="pulse"></span> Live public activity</p>
+      <h1>TA-14 Usage Dashboard</h1>
+      <p class="lead">Aggregate activity from the public admissible-execution sandbox. The dashboard shows how often the API is evaluated and how routes are classified without exposing request bodies, IP addresses, API keys, identities, or private evidence.</p>
+      <div class="hero-actions">
+        <a class="btn primary" href="/docs">Run an evaluation</a>
+        <a class="btn secondary" href="/v1/usage-stats">View raw statistics</a>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Public transparency boundary</h3>
+      <p>These numbers are informational activity counts. They are not certifications, production approvals, legal findings, or evidence that every submitted claim was independently authenticated.</p>
+      <div class="chain">No request content is displayed. No individual user is identified.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head">
+    <div>
+      <h2>Sandbox activity</h2>
+      <p>Automatically refreshed from the running API.</p>
+    </div>
+    <span class="pill" id="storage-pill">Loading…</span>
+  </div>
+  <div class="grid four">
+    <div class="card"><div class="num">Σ</div><h3>All-time evaluations</h3><div class="decision" id="all-total">0</div><p>Recorded since analytics became active.</p></div>
+    <div class="card"><div class="num">24h</div><h3>Today</h3><div class="decision" id="today-total">0</div><p>UTC-day evaluation count.</p></div>
+    <div class="card"><div class="num">↗</div><h3>Most-used route</h3><div class="decision" id="top-endpoint" style="font-size:1.15rem">—</div><p id="top-endpoint-count">No activity yet.</p></div>
+    <div class="card"><div class="num">◎</div><h3>Last refresh</h3><div class="decision" id="last-refresh" style="font-size:1.15rem">—</div><p>Dashboard refreshes every 30 seconds.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head"><div><h2>Decision distribution</h2><p>How submitted routes have been classified by the public sandbox.</p></div></div>
+  <div class="grid four">
+    <div class="card"><div class="decision allow" id="allow-count">0</div><h3>ALLOW</h3><p>Submitted conditions satisfied the sandbox rules for the declared scope.</p></div>
+    <div class="card"><div class="decision hold" id="hold-count">0</div><h3>HOLD</h3><p>Evidence, continuity, authority, or context remained incomplete.</p></div>
+    <div class="card"><div class="decision deny" id="deny-count">0</div><h3>DENY</h3><p>The submitted route failed a condition that should prevent execution.</p></div>
+    <div class="card"><div class="decision escalate" id="escalate-count">0</div><h3>ESCALATE</h3><p>The route required human, institutional, legal, safety, or partner review.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head"><div><h2>Endpoint activity</h2><p>Aggregate use across the six public evaluation routes.</p></div></div>
+  <div class="panel"><div class="endpoint-list" id="endpoint-list"><div class="endpoint"><code>No activity recorded yet.</code></div></div></div>
+</section>
+
+<script>
+  const esc = (value) => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  const number = value => new Intl.NumberFormat().format(value || 0);
+
+  function topEntry(object) {
+    const entries = Object.entries(object || {});
+    return entries.sort((a,b) => b[1] - a[1])[0] || null;
+  }
+
+  async function refreshStats() {
+    try {
+      const response = await fetch('/v1/usage-stats', {cache:'no-store'});
+      const data = await response.json();
+      const all = data.all_time || {};
+      const today = data.today || {};
+      const decisions = all.decisions || {};
+      document.getElementById('all-total').textContent = number(all.total);
+      document.getElementById('today-total').textContent = number(today.total);
+      document.getElementById('allow-count').textContent = number(decisions.ALLOW);
+      document.getElementById('hold-count').textContent = number(decisions.HOLD);
+      document.getElementById('deny-count').textContent = number(decisions.DENY);
+      document.getElementById('escalate-count').textContent = number(decisions.ESCALATE);
+      document.getElementById('storage-pill').textContent = data.storage === 'persistent' ? 'Persistent counters' : 'Live counters · reset on deploy';
+      document.getElementById('last-refresh').textContent = new Date(data.generated_at_utc).toLocaleTimeString();
+
+      const top = topEntry(all.endpoints);
+      document.getElementById('top-endpoint').textContent = top ? top[0].replace('/v1/','') : '—';
+      document.getElementById('top-endpoint-count').textContent = top ? `${number(top[1])} evaluations` : 'No activity yet.';
+
+      const list = document.getElementById('endpoint-list');
+      const endpoints = Object.entries(all.endpoints || {}).sort((a,b) => b[1]-a[1]);
+      list.innerHTML = endpoints.length ? endpoints.map(([name,count]) => `<div class="endpoint"><code>${esc(name)}</code><span class="pill">${number(count)} evaluations</span></div>`).join('') : '<div class="endpoint"><code>No activity recorded yet.</code></div>';
+    } catch (error) {
+      document.getElementById('storage-pill').textContent = 'Dashboard temporarily unavailable';
+    }
+  }
+  refreshStats();
+  setInterval(refreshStats, 30000);
+</script>
+"""
+    return HTMLResponse(_shell("TA-14 Usage Dashboard", "Public aggregate API sandbox activity", body))
+
+
 @app.get("/health", tags=["System"], summary="Health check")
 def health(x_request_id: str | None = Header(default=None)):
     return {
@@ -1326,6 +1548,7 @@ def evaluate_execution(
     _require_api_key(x_api_key)
     decision, failed, warnings, reason, next_step = evaluate_execution_payload(payload)
     _audit("/v1/evaluate-execution", x_request_id or str(uuid4()), payload.model_dump(), decision.value)
+    _record_usage("/v1/evaluate-execution", decision, x_api_key)
     return EvaluationResponse(
         meta=make_meta(x_request_id),
         decision=decision,
@@ -1353,6 +1576,7 @@ def evaluate_evidence(
     _require_api_key(x_api_key)
     decision, failed, warnings, reason, next_step = evaluate_evidence_payload(payload)
     _audit("/v1/evaluate-evidence", x_request_id or str(uuid4()), payload.model_dump(), decision.value)
+    _record_usage("/v1/evaluate-evidence", decision, x_api_key)
     return EvaluationResponse(
         meta=make_meta(x_request_id),
         decision=decision,
@@ -1403,6 +1627,7 @@ def check_authority(
         next_step = "Proceed only within declared authority scope."
 
     _audit("/v1/check-authority", x_request_id or str(uuid4()), payload.model_dump(), decision.value)
+    _record_usage("/v1/check-authority", decision, x_api_key)
     return EvaluationResponse(
         meta=make_meta(x_request_id),
         decision=decision,
@@ -1451,6 +1676,7 @@ def validate_continuity(
         next_step = "Preserve the continuity record and proceed only within declared scope."
 
     _audit("/v1/validate-continuity", x_request_id or str(uuid4()), payload.model_dump(), decision.value)
+    _record_usage("/v1/validate-continuity", decision, x_api_key)
     return EvaluationResponse(
         meta=make_meta(x_request_id),
         decision=decision,
@@ -1503,6 +1729,7 @@ def reviewability_record(
     )
 
     _audit("/v1/reviewability-record", x_request_id or str(uuid4()), payload.model_dump(), decision.value)
+    _record_usage("/v1/reviewability-record", decision, x_api_key)
     return EvaluationResponse(
         meta=make_meta(x_request_id),
         decision=decision,
@@ -1537,6 +1764,7 @@ def procurement_screen(
         next_step = "Escalate to AI Procurement Admissibility Review."
 
     _audit("/v1/procurement-screen", x_request_id or str(uuid4()), payload.model_dump(), decision.value)
+    _record_usage("/v1/procurement-screen", decision, x_api_key)
     return EvaluationResponse(
         meta=make_meta(x_request_id),
         decision=decision,
