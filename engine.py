@@ -1,0 +1,12 @@
+[
+  "tests/test_api.py::test_api_key_protection_when_enabled",
+  "tests/test_api.py::test_chain_spec",
+  "tests/test_api.py::test_decision_matrix",
+  "tests/test_api.py::test_evaluate_evidence_holds_on_continuity_gap",
+  "tests/test_api.py::test_evaluate_execution_allows_complete_low_risk_route",
+  "tests/test_api.py::test_evaluate_execution_holds_on_continuity_gap",
+  "tests/test_api.py::test_health",
+  "tests/test_api.py::test_public_boundary",
+  "tests/test_api.py::test_rate_limiter_enforces_anonymous_hourly_limit",
+  "tests/test_api.py::test_unknown_fields_are_rejected"
+]
