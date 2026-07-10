@@ -61,7 +61,7 @@ app = FastAPI(
         "production approval, or a warranty."
     ),
     docs_url="/docs",
-    redoc_url="/redoc",
+    redoc_url=None,
     openapi_url="/openapi.json",
     contact={
         "name": "TA-14",
@@ -729,7 +729,7 @@ def _shell(title: str, subtitle: str, body: str) -> str:
         <a href="/decision-matrix">Decision Matrix</a>
         <a href="/api-reference">API Reference</a>
         <a href="/boundary">Boundary</a>
-        <a href="/docs">Interactive Docs</a>
+        <a href="/docs">Interactive Tester</a>
       </div>
     </nav>
     {body}
@@ -764,7 +764,7 @@ def root():
               before they are allowed to matter.
             </p>
             <div class="hero-actions">
-              <a class="btn primary" href="/docs">Open Interactive API Docs</a>
+              <a class="btn primary" href="/docs">Open Interactive Tester</a>
               <a class="btn secondary" href="/chain">Visual 24-Link Chain</a>
               <a class="btn secondary" href="/decision-matrix">Decision Matrix</a>
               <a class="btn blue" href="/api-reference">API Reference</a>
@@ -830,7 +830,7 @@ def root():
             <h2>Built for builders, buyers, and reviewers.</h2>
             <p>
               Public visitors get human-readable pages. Developers still get raw JSON endpoints,
-              Swagger, ReDoc, and OpenAPI for integration and testing.
+              Swagger/OpenAPI, and machine-readable contracts for integration and testing.
             </p>
           </div>
           <span class="pill">Human pages + developer endpoints</span>
@@ -1007,7 +1007,7 @@ def decision_matrix_page():
               This page is the human-readable version of the raw JSON decision matrix.
             </p>
             <div class="hero-actions">
-              <a class="btn primary" href="/docs">Open Interactive Docs</a>
+              <a class="btn primary" href="/docs">Open Interactive Tester</a>
               <a class="btn secondary" href="/chain">Visual 24-Link Chain</a>
               <a class="btn blue" href="/api-reference">API Reference</a>
             </div>
@@ -1073,11 +1073,11 @@ def api_reference_page():
             <h1>Readable for people. Structured for machines.</h1>
             <p class="lead">
               This page explains the public sandbox without forcing visitors into raw OpenAPI JSON.
-              Developers can still use Swagger, ReDoc, and the machine-readable OpenAPI contract.
+              Developers can still use the interactive tester and the machine-readable OpenAPI contract.
             </p>
             <div class="hero-actions">
-              <a class="btn primary" href="/docs">Swagger Tester</a>
-              <a class="btn secondary" href="/redoc">ReDoc Reference</a>
+              <a class="btn primary" href="/docs">Open Interactive Tester</a>
+              <a class="btn secondary" href="/chain">View 24-Link Chain</a>
               <a class="btn blue" href="/openapi.json">Raw OpenAPI JSON</a>
             </div>
           </div>
@@ -1178,7 +1178,7 @@ def boundary_page():
             <div class="hero-actions">
               <a class="btn primary" href="/v1/public-boundary">Raw Boundary JSON</a>
               <a class="btn secondary" href="/api-reference">API Reference</a>
-              <a class="btn blue" href="/docs">Interactive Docs</a>
+              <a class="btn blue" href="/docs">Interactive Tester</a>
             </div>
           </div>
           <aside class="panel">
@@ -1233,7 +1233,12 @@ def version(x_request_id: str | None = Header(default=None)):
     }
 
 
-@app.get("/v1/chain-spec", response_model=ChainSpecResponse, tags=["Specification"], summary="Raw 24-link chain specification")
+@app.get(
+    "/v1/chain-spec",
+    response_model=ChainSpecResponse,
+    tags=["Specification"],
+    summary="Raw 24-link chain specification",
+)
 def chain_spec(x_request_id: str | None = Header(default=None)):
     return ChainSpecResponse(
         meta=make_meta(x_request_id),
@@ -1243,7 +1248,12 @@ def chain_spec(x_request_id: str | None = Header(default=None)):
     )
 
 
-@app.get("/v1/decision-matrix", response_model=DecisionMatrixResponse, tags=["Specification"], summary="Raw decision matrix")
+@app.get(
+    "/v1/decision-matrix",
+    response_model=DecisionMatrixResponse,
+    tags=["Specification"],
+    summary="Raw decision matrix",
+)
 def get_decision_matrix(x_request_id: str | None = Header(default=None)):
     return DecisionMatrixResponse(
         meta=make_meta(x_request_id),
@@ -1251,7 +1261,12 @@ def get_decision_matrix(x_request_id: str | None = Header(default=None)):
     )
 
 
-@app.get("/v1/public-boundary", response_model=PublicBoundaryResponse, tags=["Boundary"], summary="Public non-claim boundary")
+@app.get(
+    "/v1/public-boundary",
+    response_model=PublicBoundaryResponse,
+    tags=["Boundary"],
+    summary="Public non-claim boundary",
+)
 def public_boundary(x_request_id: str | None = Header(default=None)):
     return PublicBoundaryResponse(
         meta=make_meta(x_request_id),
@@ -1272,7 +1287,12 @@ def public_boundary(x_request_id: str | None = Header(default=None)):
     )
 
 
-@app.post("/v1/evaluate-execution", response_model=EvaluationResponse, tags=["Evaluation"], summary="Evaluate an execution route")
+@app.post(
+    "/v1/evaluate-execution",
+    response_model=EvaluationResponse,
+    tags=["Evaluation"],
+    summary="Evaluate an execution route",
+)
 def evaluate_execution(
     payload: EvaluateExecutionRequest,
     x_api_key: str | None = Header(default=None),
@@ -1294,7 +1314,12 @@ def evaluate_execution(
     )
 
 
-@app.post("/v1/evaluate-evidence", response_model=EvaluationResponse, tags=["Evaluation"], summary="Evaluate an evidence claim")
+@app.post(
+    "/v1/evaluate-evidence",
+    response_model=EvaluationResponse,
+    tags=["Evaluation"],
+    summary="Evaluate an evidence claim",
+)
 def evaluate_evidence(
     payload: EvaluateEvidenceRequest,
     x_api_key: str | None = Header(default=None),
@@ -1316,7 +1341,12 @@ def evaluate_evidence(
     )
 
 
-@app.post("/v1/check-authority", response_model=EvaluationResponse, tags=["Evaluation"], summary="Check authority and legitimacy")
+@app.post(
+    "/v1/check-authority",
+    response_model=EvaluationResponse,
+    tags=["Evaluation"],
+    summary="Check authority and legitimacy",
+)
 def check_authority(
     payload: AuthorityCheckRequest,
     x_api_key: str | None = Header(default=None),
@@ -1361,7 +1391,12 @@ def check_authority(
     )
 
 
-@app.post("/v1/validate-continuity", response_model=EvaluationResponse, tags=["Evaluation"], summary="Validate record continuity")
+@app.post(
+    "/v1/validate-continuity",
+    response_model=EvaluationResponse,
+    tags=["Evaluation"],
+    summary="Validate record continuity",
+)
 def validate_continuity(
     payload: ContinuityCheckRequest,
     x_api_key: str | None = Header(default=None),
@@ -1404,7 +1439,12 @@ def validate_continuity(
     )
 
 
-@app.post("/v1/reviewability-record", response_model=EvaluationResponse, tags=["Evaluation"], summary="Create a reviewability record")
+@app.post(
+    "/v1/reviewability-record",
+    response_model=EvaluationResponse,
+    tags=["Evaluation"],
+    summary="Create a reviewability record",
+)
 def reviewability_record(
     payload: ReviewabilityRecordRequest,
     x_api_key: str | None = Header(default=None),
@@ -1451,7 +1491,12 @@ def reviewability_record(
     )
 
 
-@app.post("/v1/procurement-screen", response_model=EvaluationResponse, tags=["Procurement"], summary="Screen an AI procurement route")
+@app.post(
+    "/v1/procurement-screen",
+    response_model=EvaluationResponse,
+    tags=["Procurement"],
+    summary="Screen an AI procurement route",
+)
 def procurement_screen(
     payload: ProcurementScreenRequest,
     x_api_key: str | None = Header(default=None),
