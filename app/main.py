@@ -34,6 +34,7 @@ from .models import (
     ProcurementScreenRequest,
     PublicBoundaryResponse,
     ReviewabilityRecordRequest,
+    RouteRiskClass,
 )
 
 APP_NAME = "TA-14 Admissible Execution API Sandbox"
@@ -188,114 +189,129 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-@app.get("/", response_class=HTMLResponse, tags=["Public Sandbox"])
-def root():
-    return """
+def _shell(title: str, subtitle: str, body: str) -> str:
+    return f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TA-14 API Sandbox | Admissible Execution</title>
-  <meta name="description" content="TA-14 Admissible Execution API Sandbox — a live public reference API for evaluating consequence-bearing AI, automation, evidence, authority, and runtime execution routes before action becomes consequence." />
+  <title>{title}</title>
+  <meta name="description" content="{subtitle}" />
   <style>
-    :root{
+    :root {{
       --black:#020617;
       --ink:#0f172a;
-      --muted:#64748b;
-      --line:rgba(226,232,240,.24);
+      --muted:#94a3b8;
+      --line:rgba(226,232,240,.18);
       --white:#ffffff;
       --blue:#2563eb;
+      --sky:#0ea5e9;
       --cyan:#06b6d4;
       --violet:#7c3aed;
       --emerald:#10b981;
       --amber:#f59e0b;
       --rose:#f43f5e;
-      --glass:rgba(255,255,255,.08);
-      --glass-2:rgba(255,255,255,.12);
+      --glass:rgba(255,255,255,.075);
+      --glass2:rgba(255,255,255,.12);
       --shadow:0 34px 120px rgba(0,0,0,.35);
       --max:1220px;
-    }
+    }}
 
-    *{box-sizing:border-box}
-    html{scroll-behavior:smooth}
-    body{
+    * {{ box-sizing:border-box; }}
+    html {{ scroll-behavior:smooth; }}
+    body {{
       margin:0;
+      min-height:100vh;
       font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
       color:#e5eefc;
+      line-height:1.62;
       background:
-        radial-gradient(circle at 12% 6%, rgba(37,99,235,.34), transparent 30rem),
-        radial-gradient(circle at 88% 0%, rgba(124,58,237,.32), transparent 32rem),
-        radial-gradient(circle at 50% 70%, rgba(6,182,212,.16), transparent 36rem),
+        radial-gradient(circle at 10% 0%, rgba(37,99,235,.36), transparent 34rem),
+        radial-gradient(circle at 90% 4%, rgba(124,58,237,.32), transparent 34rem),
+        radial-gradient(circle at 50% 62%, rgba(6,182,212,.14), transparent 40rem),
         linear-gradient(135deg,#020617 0%,#0f172a 52%,#111827 100%);
-      min-height:100vh;
-      line-height:1.6;
       overflow-x:hidden;
-    }
+    }}
 
-    body:before{
+    body:before {{
       content:"";
       position:fixed;
       inset:0;
+      z-index:-2;
       background:
         linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
       background-size:42px 42px;
-      mask-image:linear-gradient(180deg,rgba(0,0,0,.78),rgba(0,0,0,.12));
+      mask-image:linear-gradient(180deg,rgba(0,0,0,.82),rgba(0,0,0,.10));
       pointer-events:none;
+    }}
+
+    body:after {{
+      content:"";
+      position:fixed;
+      inset:0;
       z-index:-1;
-    }
+      background:
+        radial-gradient(circle at 20% 20%, rgba(255,255,255,.075), transparent 26rem),
+        radial-gradient(circle at 80% 18%, rgba(255,255,255,.05), transparent 22rem);
+      pointer-events:none;
+    }}
 
-    a{color:inherit}
-    .wrap{max-width:var(--max);margin:0 auto;padding:28px 22px 70px}
+    a {{ color:inherit; }}
+    .wrap {{ max-width:var(--max); margin:0 auto; padding:28px 22px 70px; }}
 
-    .nav{
+    .nav {{
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap:18px;
       padding:8px 0 28px;
-    }
+    }}
 
-    .brand{
+    .brand {{
       display:flex;
       flex-direction:column;
       text-decoration:none;
       line-height:1.1;
-    }
-    .brand strong{
+    }}
+
+    .brand strong {{
       color:#fff;
       font-size:1.05rem;
       font-weight:950;
       letter-spacing:-.04em;
-    }
-    .brand span{
+    }}
+
+    .brand span {{
       color:#93c5fd;
       font-size:.82rem;
       font-weight:900;
       margin-top:5px;
-    }
+    }}
 
-    .navlinks{
+    .navlinks {{
       display:flex;
       flex-wrap:wrap;
       align-items:center;
       justify-content:flex-end;
       gap:10px;
-    }
-    .navlinks a{
+    }}
+
+    .navlinks a {{
       text-decoration:none;
-      color:#cbd5e1;
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.06);
+      color:#dbeafe;
+      border:1px solid rgba(255,255,255,.14);
+      background:rgba(255,255,255,.065);
       border-radius:999px;
       padding:9px 13px;
       font-size:.88rem;
       font-weight:900;
-    }
-    .navlinks a:hover{background:rgba(255,255,255,.13);color:#fff}
+    }}
 
-    .hero{
+    .navlinks a:hover {{ background:rgba(255,255,255,.14); color:#fff; }}
+
+    .hero {{
       position:relative;
       overflow:hidden;
       border:1px solid rgba(255,255,255,.14);
@@ -308,30 +324,30 @@ def root():
       box-shadow:var(--shadow);
       backdrop-filter:blur(18px);
       padding:clamp(30px,6vw,74px);
-    }
+    }}
 
-    .hero:after{
+    .hero:after {{
       content:"";
       position:absolute;
-      width:520px;
-      height:520px;
-      right:-240px;
-      top:-220px;
+      width:560px;
+      height:560px;
+      right:-260px;
+      top:-250px;
       border-radius:999px;
       background:radial-gradient(circle,rgba(255,255,255,.18),transparent 64%);
       pointer-events:none;
-    }
+    }}
 
-    .hero-grid{
+    .hero-grid {{
       position:relative;
       z-index:1;
       display:grid;
       grid-template-columns:1.08fr .92fr;
       gap:38px;
       align-items:center;
-    }
+    }}
 
-    .eyebrow{
+    .eyebrow {{
       display:inline-flex;
       align-items:center;
       gap:9px;
@@ -345,9 +361,9 @@ def root():
       letter-spacing:.14em;
       text-transform:uppercase;
       margin:0 0 18px;
-    }
+    }}
 
-    .pulse{
+    .pulse {{
       display:inline-block;
       width:9px;
       height:9px;
@@ -355,39 +371,57 @@ def root():
       background:#22c55e;
       box-shadow:0 0 0 0 rgba(34,197,94,.65);
       animation:pulse 1.8s infinite;
-    }
+    }}
 
-    @keyframes pulse{
-      0%{box-shadow:0 0 0 0 rgba(34,197,94,.65)}
-      70%{box-shadow:0 0 0 12px rgba(34,197,94,0)}
-      100%{box-shadow:0 0 0 0 rgba(34,197,94,0)}
-    }
+    @keyframes pulse {{
+      0% {{ box-shadow:0 0 0 0 rgba(34,197,94,.65); }}
+      70% {{ box-shadow:0 0 0 12px rgba(34,197,94,0); }}
+      100% {{ box-shadow:0 0 0 0 rgba(34,197,94,0); }}
+    }}
 
-    h1{
+    h1 {{
       margin:0 0 22px;
       color:#fff;
       font-size:clamp(3.2rem,7.5vw,7.15rem);
       line-height:.86;
       letter-spacing:-.085em;
       text-wrap:balance;
-    }
+    }}
 
-    .lead{
-      max-width:850px;
+    h2 {{
+      margin:0 0 14px;
+      color:#fff;
+      font-size:clamp(2rem,4.4vw,3.5rem);
+      line-height:1;
+      letter-spacing:-.065em;
+      text-wrap:balance;
+    }}
+
+    h3 {{
+      margin:0 0 10px;
+      color:#fff;
+      font-size:1.2rem;
+      letter-spacing:-.03em;
+    }}
+
+    p {{ margin:0 0 18px; }}
+
+    .lead {{
+      max-width:860px;
       color:#dbeafe;
       font-size:clamp(1.08rem,2vw,1.32rem);
       line-height:1.75;
       margin:0 0 28px;
-    }
+    }}
 
-    .hero-actions,.cta-row{
+    .hero-actions,.cta-row {{
       display:flex;
       flex-wrap:wrap;
       gap:13px;
       margin-top:28px;
-    }
+    }}
 
-    .btn{
+    .btn {{
       display:inline-flex;
       align-items:center;
       justify-content:center;
@@ -397,95 +431,95 @@ def root():
       text-decoration:none;
       font-weight:950;
       transition:transform .16s ease, background .16s ease, border-color .16s ease;
-    }
-    .btn:hover{transform:translateY(-2px)}
-    .btn.primary{
+    }}
+
+    .btn:hover {{ transform:translateY(-2px); }}
+
+    .btn.primary {{
       color:#020617;
       background:#fff;
       border:1px solid #fff;
       box-shadow:0 18px 45px rgba(255,255,255,.16);
-    }
-    .btn.secondary{
+    }}
+
+    .btn.secondary {{
       color:#fff;
       background:rgba(255,255,255,.07);
       border:1px solid rgba(255,255,255,.22);
-    }
-    .btn.blue{
+    }}
+
+    .btn.blue {{
       color:#fff;
       background:linear-gradient(135deg,var(--blue),var(--violet));
       border:1px solid rgba(255,255,255,.12);
       box-shadow:0 18px 45px rgba(37,99,235,.22);
-    }
+    }}
 
-    .panel{
+    .panel,.card,.codebox {{
       border:1px solid rgba(255,255,255,.14);
-      border-radius:34px;
-      background:rgba(255,255,255,.08);
+      background:rgba(255,255,255,.075);
       backdrop-filter:blur(14px);
+      box-shadow:0 18px 55px rgba(0,0,0,.22);
+    }}
+
+    .panel {{
+      border-radius:34px;
       padding:26px;
-      box-shadow:inset 0 1px 0 rgba(255,255,255,.12);
-    }
-    .panel h2{
-      color:#fff;
-      margin:0 0 12px;
-      font-size:clamp(1.85rem,3.2vw,2.65rem);
-      line-height:1;
-      letter-spacing:-.055em;
-    }
-    .panel p{color:#cbd5e1;margin:0 0 18px}
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 18px 55px rgba(0,0,0,.22);
+    }}
 
-    .status-grid{
-      display:grid;
-      grid-template-columns:repeat(2,minmax(0,1fr));
-      gap:12px;
-      margin-top:18px;
-    }
-    .status{
-      border:1px solid rgba(255,255,255,.12);
-      background:rgba(255,255,255,.07);
-      border-radius:18px;
-      padding:15px;
-    }
-    .status strong{
-      display:block;
-      color:#fff;
-      font-size:1rem;
-      margin-bottom:3px;
-    }
-    .status span{
-      color:#cbd5e1;
-      font-size:.9rem;
-    }
+    .panel p {{ color:#cbd5e1; }}
 
-    .chain{
+    .chain {{
       margin-top:22px;
       color:#dff7ff;
       font-weight:950;
       line-height:1.8;
-    }
+    }}
 
-    section{margin-top:72px}
-    .section-head{
+    .status-grid {{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:12px;
+      margin-top:18px;
+    }}
+
+    .status {{
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(255,255,255,.07);
+      border-radius:18px;
+      padding:15px;
+    }}
+
+    .status strong {{
+      display:block;
+      color:#fff;
+      font-size:1rem;
+      margin-bottom:3px;
+    }}
+
+    .status span {{
+      color:#cbd5e1;
+      font-size:.9rem;
+    }}
+
+    section {{ margin-top:72px; }}
+
+    .section-head {{
       display:grid;
       grid-template-columns:1fr auto;
       align-items:end;
       gap:24px;
       margin-bottom:24px;
-    }
-    .section-head h2{
-      margin:0 0 12px;
-      color:#fff;
-      font-size:clamp(2rem,4.4vw,3.5rem);
-      line-height:1;
-      letter-spacing:-.065em;
-    }
-    .section-head p{
-      margin:0;
-      max-width:830px;
+    }}
+
+    .section-head p {{
+      max-width:850px;
       color:#cbd5e1;
       font-size:1.05rem;
-    }
-    .pill{
+    }}
+
+    .pill {{
       border:1px solid rgba(255,255,255,.16);
       background:rgba(255,255,255,.08);
       border-radius:999px;
@@ -493,27 +527,25 @@ def root():
       color:#dbeafe;
       font-weight:950;
       white-space:nowrap;
-    }
+    }}
 
-    .grid{
+    .grid {{
       display:grid;
       gap:18px;
-    }
-    .grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
-    .grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}
-    .grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+    }}
 
-    .card{
+    .grid.two {{ grid-template-columns:repeat(2,minmax(0,1fr)); }}
+    .grid.three {{ grid-template-columns:repeat(3,minmax(0,1fr)); }}
+    .grid.four {{ grid-template-columns:repeat(4,minmax(0,1fr)); }}
+
+    .card {{
       position:relative;
       overflow:hidden;
-      border:1px solid rgba(255,255,255,.12);
       border-radius:26px;
       padding:24px;
-      background:rgba(255,255,255,.075);
-      box-shadow:0 16px 50px rgba(0,0,0,.18);
-      backdrop-filter:blur(12px);
-    }
-    .card:after{
+    }}
+
+    .card:after {{
       content:"";
       position:absolute;
       width:150px;
@@ -523,23 +555,23 @@ def root():
       border-radius:999px;
       background:radial-gradient(circle,rgba(56,189,248,.14),transparent 70%);
       pointer-events:none;
-    }
-    .card h3{
-      position:relative;
-      z-index:1;
-      color:#fff;
-      margin:0 0 10px;
-      font-size:1.18rem;
-      letter-spacing:-.03em;
-    }
-    .card p,.card li{
+    }}
+
+    .card p,.card li {{
       position:relative;
       z-index:1;
       color:#cbd5e1;
+    }}
+
+    .card ul {{
+      position:relative;
+      z-index:1;
       margin:0;
-    }
-    .card ul{padding-left:20px;margin:0;color:#cbd5e1}
-    .num{
+      padding-left:20px;
+      color:#cbd5e1;
+    }}
+
+    .num {{
       display:inline-flex;
       width:42px;
       height:42px;
@@ -550,41 +582,45 @@ def root():
       color:#fff;
       font-weight:950;
       margin-bottom:16px;
-    }
+    }}
 
-    .decision{
-      font-size:1.8rem;
+    .decision {{
+      font-size:1.9rem;
       font-weight:1000;
-      letter-spacing:-.05em;
-      margin-bottom:6px;
-    }
-    .allow{color:#86efac}
-    .hold{color:#fcd34d}
-    .deny{color:#fda4af}
-    .escalate{color:#c4b5fd}
+      letter-spacing:-.055em;
+      margin-bottom:7px;
+    }}
 
-    .codebox{
-      border:1px solid rgba(255,255,255,.14);
-      background:rgba(2,6,23,.7);
+    .allow {{ color:#86efac; }}
+    .hold {{ color:#fcd34d; }}
+    .deny {{ color:#fda4af; }}
+    .escalate {{ color:#c4b5fd; }}
+
+    .codebox {{
       border-radius:28px;
       padding:22px;
       overflow:auto;
-      box-shadow:0 18px 55px rgba(0,0,0,.24);
-    }
-    pre{
+      background:rgba(2,6,23,.72);
+    }}
+
+    pre {{
       margin:0;
       color:#dbeafe;
       font-size:.92rem;
       line-height:1.7;
       white-space:pre-wrap;
-    }
-    code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace}
+    }}
 
-    .endpoint-list{
+    code {{
+      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+    }}
+
+    .endpoint-list {{
       display:grid;
       gap:11px;
-    }
-    .endpoint{
+    }}
+
+    .endpoint {{
       display:flex;
       align-items:center;
       justify-content:space-between;
@@ -593,12 +629,14 @@ def root():
       background:rgba(255,255,255,.07);
       border-radius:18px;
       padding:13px 15px;
-    }
-    .endpoint code{
+    }}
+
+    .endpoint code {{
       color:#fff;
       font-weight:950;
-    }
-    .method{
+    }}
+
+    .method {{
       display:inline-flex;
       min-width:54px;
       justify-content:center;
@@ -609,9 +647,42 @@ def root():
       background:rgba(37,99,235,.18);
       color:#bfdbfe;
       border:1px solid rgba(147,197,253,.22);
-    }
+    }}
 
-    .footer{
+    .chain-map {{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top:22px;
+    }}
+
+    .node {{
+      display:inline-flex;
+      align-items:center;
+      gap:9px;
+      border:1px solid rgba(255,255,255,.16);
+      background:rgba(255,255,255,.08);
+      border-radius:999px;
+      padding:9px 12px;
+      font-weight:950;
+      color:#fff;
+      box-shadow:0 10px 30px rgba(0,0,0,.16);
+      font-size:.92rem;
+    }}
+
+    .node small {{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:24px;
+      height:24px;
+      border-radius:999px;
+      background:rgba(255,255,255,.14);
+      color:#bae6fd;
+      font-size:.72rem;
+    }}
+
+    .footer {{
       margin-top:70px;
       border-top:1px solid rgba(255,255,255,.12);
       padding-top:26px;
@@ -620,23 +691,24 @@ def root():
       flex-wrap:wrap;
       justify-content:space-between;
       gap:18px;
-    }
-    .footer strong{color:#fff}
-    .footer a{text-decoration:none;color:#dbeafe;font-weight:900}
+    }}
 
-    @media(max-width:980px){
-      .hero-grid,.grid.two,.grid.three,.grid.four,.section-head{grid-template-columns:1fr}
-      .pill{justify-self:start}
-    }
+    .footer strong {{ color:#fff; }}
+    .footer a {{ text-decoration:none; color:#dbeafe; font-weight:900; }}
 
-    @media(max-width:680px){
-      .nav{align-items:flex-start;flex-direction:column}
-      .navlinks{justify-content:flex-start}
-      .hero{border-radius:30px;padding:24px}
-      h1{letter-spacing:-.065em}
-      .status-grid{grid-template-columns:1fr}
-      .endpoint{align-items:flex-start;flex-direction:column}
-    }
+    @media(max-width:980px) {{
+      .hero-grid,.grid.two,.grid.three,.grid.four,.section-head {{ grid-template-columns:1fr; }}
+      .pill {{ justify-self:start; }}
+    }}
+
+    @media(max-width:680px) {{
+      .nav {{ align-items:flex-start; flex-direction:column; }}
+      .navlinks {{ justify-content:flex-start; }}
+      .hero {{ border-radius:30px; padding:24px; }}
+      h1 {{ letter-spacing:-.065em; }}
+      .status-grid {{ grid-template-columns:1fr; }}
+      .endpoint {{ align-items:flex-start; flex-direction:column; }}
+    }}
   </style>
 </head>
 <body>
@@ -647,13 +719,32 @@ def root():
         <span>No admissible chain. No admissible execution.</span>
       </a>
       <div class="navlinks">
+        <a href="/">Home</a>
+        <a href="/chain">Chain</a>
+        <a href="/decision-matrix">Decision Matrix</a>
+        <a href="/api-reference">API Reference</a>
         <a href="/docs">Interactive Docs</a>
-        <a href="/redoc">ReDoc</a>
-        <a href="/openapi.json">OpenAPI</a>
-        <a href="/v1/public-boundary">Boundary</a>
       </div>
     </nav>
+    {body}
+    <footer class="footer">
+      <div>
+        <strong>TA-14 Admissible Execution API Sandbox</strong><br />
+        Reality → Record → Continuity → Evidence → Reliance → Authority → Legitimacy → Binding → Commit → Execution → Outcome → Memory
+      </div>
+      <div>
+        <a href="mailto:ta14admissibleexecution@gmail.com">ta14admissibleexecution@gmail.com</a>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>
+"""
 
+
+@app.get("/", response_class=HTMLResponse, tags=["Public Sandbox"])
+def root():
+    body = """
     <main>
       <section class="hero">
         <div class="hero-grid">
@@ -667,9 +758,9 @@ def root():
             </p>
             <div class="hero-actions">
               <a class="btn primary" href="/docs">Open Interactive API Docs</a>
-              <a class="btn secondary" href="/v1/chain-spec">View Chain Spec</a>
-              <a class="btn secondary" href="/v1/decision-matrix">Decision Matrix</a>
-              <a class="btn blue" href="/openapi.json">OpenAPI JSON</a>
+              <a class="btn secondary" href="/chain">Visual Chain Map</a>
+              <a class="btn secondary" href="/decision-matrix">Decision Matrix</a>
+              <a class="btn blue" href="/api-reference">API Reference</a>
             </div>
           </div>
 
@@ -733,32 +824,30 @@ def root():
             <p class="eyebrow">Public endpoints</p>
             <h2>Built for builders, buyers, and reviewers.</h2>
             <p>
-              Use the interactive docs to test the API. Use OpenAPI to inspect the contract.
-              Use the boundary endpoint to preserve the public non-claim language.
+              The public buttons now open human-readable pages. Raw JSON endpoints still exist
+              for developers and integrations, but they are no longer the main visitor experience.
             </p>
           </div>
-          <span class="pill">Try it live</span>
+          <span class="pill">Human pages + developer endpoints</span>
         </div>
 
         <div class="grid two">
           <div class="card">
-            <h3>Core endpoints</h3>
+            <h3>Human-facing pages</h3>
             <div class="endpoint-list">
-              <div class="endpoint"><span><span class="method">GET</span> <code>/health</code></span><span>Service health</span></div>
-              <div class="endpoint"><span><span class="method">GET</span> <code>/version</code></span><span>API version</span></div>
-              <div class="endpoint"><span><span class="method">GET</span> <code>/v1/chain-spec</code></span><span>TA-14 chain</span></div>
-              <div class="endpoint"><span><span class="method">GET</span> <code>/v1/decision-matrix</code></span><span>Decision logic</span></div>
-              <div class="endpoint"><span><span class="method">GET</span> <code>/v1/public-boundary</code></span><span>Public boundary</span></div>
+              <div class="endpoint"><span><span class="method">VIEW</span> <code>/chain</code></span><span>Visual TA-14 chain</span></div>
+              <div class="endpoint"><span><span class="method">VIEW</span> <code>/decision-matrix</code></span><span>Decision logic</span></div>
+              <div class="endpoint"><span><span class="method">VIEW</span> <code>/api-reference</code></span><span>Readable API reference</span></div>
+              <div class="endpoint"><span><span class="method">VIEW</span> <code>/docs</code></span><span>Interactive tester</span></div>
             </div>
           </div>
 
           <div class="card">
-            <h3>Evaluation endpoints</h3>
+            <h3>Core evaluation endpoints</h3>
             <div class="endpoint-list">
               <div class="endpoint"><span><span class="method">POST</span> <code>/v1/evaluate-execution</code></span><span>Execution route</span></div>
               <div class="endpoint"><span><span class="method">POST</span> <code>/v1/evaluate-evidence</code></span><span>Evidence claim</span></div>
               <div class="endpoint"><span><span class="method">POST</span> <code>/v1/check-authority</code></span><span>Authority scope</span></div>
-              <div class="endpoint"><span><span class="method">POST</span> <code>/v1/validate-continuity</code></span><span>Record continuity</span></div>
               <div class="endpoint"><span><span class="method">POST</span> <code>/v1/procurement-screen</code></span><span>Vendor screen</span></div>
             </div>
           </div>
@@ -805,8 +894,8 @@ def root():
         </div>
 
         <div class="cta-row">
-          <a class="btn primary" href="/docs#/default/evaluate_execution_v1_evaluate_execution_post">Test Evaluate Execution</a>
-          <a class="btn secondary" href="/v1/public-boundary">Read Public Boundary</a>
+          <a class="btn primary" href="/docs#/Evaluation/evaluate_execution_v1_evaluate_execution_post">Test Evaluate Execution</a>
+          <a class="btn secondary" href="/boundary">Read Public Boundary</a>
         </div>
       </section>
 
@@ -841,21 +930,312 @@ def root():
           </article>
         </div>
       </section>
-
-      <footer class="footer">
-        <div>
-          <strong>TA-14 Admissible Execution API Sandbox</strong><br />
-          Reality → Record → Continuity → Evidence → Reliance → Authority → Legitimacy → Binding → Commit → Execution → Outcome → Memory
-        </div>
-        <div>
-          <a href="mailto:ta14admissibleexecution@gmail.com">ta14admissibleexecution@gmail.com</a>
-        </div>
-      </footer>
     </main>
-  </div>
-</body>
-</html>
     """
+    return _shell(
+        "TA-14 API Sandbox | Admissible Execution",
+        "TA-14 Admissible Execution API Sandbox — live public reference API for consequence-bearing execution routes.",
+        body,
+    )
+
+
+@app.get("/chain", response_class=HTMLResponse, tags=["Human Pages"])
+def visual_chain():
+    nodes = "".join(
+        f'<span class="node"><small>{idx:02d}</small>{name.title()}</span>'
+        for idx, name in enumerate(TA14_CHAIN, start=1)
+    )
+    body = f"""
+    <main>
+      <section class="hero">
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow"><span class="pulse"></span> Visual chain map</p>
+            <h1>The route must hold before execution matters.</h1>
+            <p class="lead">
+              TA-14 reviews the dependency chain beneath execution. The final action is not the only issue.
+              The route must preserve reality, record, continuity, evidence, reliance, authority, legitimacy,
+              binding, commit, execution, outcome, and memory.
+            </p>
+            <div class="hero-actions">
+              <a class="btn primary" href="/docs">Test the API</a>
+              <a class="btn secondary" href="/decision-matrix">View Decision Matrix</a>
+              <a class="btn blue" href="/api-reference">API Reference</a>
+            </div>
+          </div>
+          <aside class="panel">
+            <p class="eyebrow">Core doctrine</p>
+            <h2>No admissible chain. No admissible execution.</h2>
+            <p>
+              A route can fail before the action. A system can be authorized to access resources
+              and still not be admissible enough to become consequence.
+            </p>
+          </aside>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">TA-14 chain</p>
+            <h2>From reality to memory.</h2>
+            <p>
+              This is the public sandbox chain used to explain the evaluation structure.
+              Raw JSON remains available at <code>/v1/chain-spec</code> for integrations.
+            </p>
+          </div>
+          <span class="pill">12 chain links</span>
+        </div>
+        <div class="card">
+          <div class="chain-map">{nodes}</div>
+        </div>
+      </section>
+
+      <section>
+        <div class="grid three">
+          <article class="card">
+            <span class="num">1</span>
+            <h3>Upstream proof</h3>
+            <p>Reality, record, continuity, evidence, and reliance must hold before authority is trusted.</p>
+          </article>
+          <article class="card">
+            <span class="num">2</span>
+            <h3>Permission proof</h3>
+            <p>Authority, legitimacy, binding, and commit determine whether the route can approach consequence.</p>
+          </article>
+          <article class="card">
+            <span class="num">3</span>
+            <h3>Outcome proof</h3>
+            <p>Execution, outcome, and memory determine whether the route remains reviewable after action.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+    """
+    return _shell("TA-14 Chain Map", "Human-readable TA-14 admissible execution chain map.", body)
+
+
+@app.get("/decision-matrix", response_class=HTMLResponse, tags=["Human Pages"])
+def decision_matrix_page():
+    matrix = decision_matrix()
+    body = f"""
+    <main>
+      <section class="hero">
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow"><span class="pulse"></span> Decision matrix</p>
+            <h1>ALLOW is not the default. It is earned.</h1>
+            <p class="lead">
+              The TA-14 sandbox classifies submitted routes as ALLOW, HOLD, DENY, or ESCALATE.
+              This page is the human-readable version of the raw JSON decision matrix.
+            </p>
+            <div class="hero-actions">
+              <a class="btn primary" href="/docs">Open Interactive Docs</a>
+              <a class="btn secondary" href="/chain">Visual Chain Map</a>
+              <a class="btn blue" href="/api-reference">API Reference</a>
+            </div>
+          </div>
+          <aside class="panel">
+            <p class="eyebrow">Boundary rule</p>
+            <h2>Capability is not clearance.</h2>
+            <p>
+              The question is not merely whether a system can act. The question is whether the route
+              is admissible enough to become consequence.
+            </p>
+          </aside>
+        </div>
+      </section>
+
+      <section>
+        <div class="grid four">
+          <article class="card">
+            <div class="decision allow">ALLOW</div>
+            <p>{matrix["ALLOW"]}</p>
+          </article>
+          <article class="card">
+            <div class="decision hold">HOLD</div>
+            <p>{matrix["HOLD"]}</p>
+          </article>
+          <article class="card">
+            <div class="decision deny">DENY</div>
+            <p>{matrix["DENY"]}</p>
+          </article>
+          <article class="card">
+            <div class="decision escalate">ESCALATE</div>
+            <p>{matrix["ESCALATE"]}</p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Raw endpoint remains available</p>
+            <h2>Developer JSON is still there.</h2>
+            <p>
+              Integrations can still read the raw matrix at <code>/v1/decision-matrix</code>.
+              Human visitors should use this visual page.
+            </p>
+          </div>
+          <a class="btn secondary" href="/v1/decision-matrix">Open Raw JSON</a>
+        </div>
+      </section>
+    </main>
+    """
+    return _shell("TA-14 Decision Matrix", "Human-readable ALLOW / HOLD / DENY / ESCALATE matrix.", body)
+
+
+@app.get("/api-reference", response_class=HTMLResponse, tags=["Human Pages"])
+def api_reference_page():
+    body = """
+    <main>
+      <section class="hero">
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow"><span class="pulse"></span> Human-readable API reference</p>
+            <h1>Readable for people. Structured for machines.</h1>
+            <p class="lead">
+              This page explains the public sandbox without forcing visitors into raw OpenAPI JSON.
+              Developers can still use Swagger, ReDoc, and the machine-readable OpenAPI contract.
+            </p>
+            <div class="hero-actions">
+              <a class="btn primary" href="/docs">Swagger Tester</a>
+              <a class="btn secondary" href="/redoc">ReDoc Reference</a>
+              <a class="btn blue" href="/openapi.json">Raw OpenAPI JSON</a>
+            </div>
+          </div>
+          <aside class="panel">
+            <p class="eyebrow">Public API status</p>
+            <h2>Live sandbox. Bounded use.</h2>
+            <p>
+              Public testing is available. Production use, signed evaluations, persistent audit storage,
+              client-specific rules, billing, and partner integrations require written scope.
+            </p>
+          </aside>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">System endpoints</p>
+            <h2>Check status and specification.</h2>
+          </div>
+          <span class="pill">GET endpoints</span>
+        </div>
+        <div class="grid two">
+          <article class="card">
+            <div class="endpoint-list">
+              <div class="endpoint"><span><span class="method">GET</span> <code>/health</code></span><span>Returns health and sandbox mode.</span></div>
+              <div class="endpoint"><span><span class="method">GET</span> <code>/version</code></span><span>Returns API version and service name.</span></div>
+              <div class="endpoint"><span><span class="method">GET</span> <code>/v1/chain-spec</code></span><span>Raw TA-14 chain JSON.</span></div>
+            </div>
+          </article>
+          <article class="card">
+            <div class="endpoint-list">
+              <div class="endpoint"><span><span class="method">GET</span> <code>/v1/decision-matrix</code></span><span>Raw decision matrix JSON.</span></div>
+              <div class="endpoint"><span><span class="method">GET</span> <code>/v1/public-boundary</code></span><span>Official non-claim boundary JSON.</span></div>
+              <div class="endpoint"><span><span class="method">GET</span> <code>/openapi.json</code></span><span>Machine-readable OpenAPI contract.</span></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Evaluation endpoints</p>
+            <h2>Submit routes for sandbox classification.</h2>
+            <p>
+              POST endpoints return response metadata, decision, chain status, failed links,
+              warnings, reason, next step, public boundary, and the TA-14 chain.
+            </p>
+          </div>
+          <span class="pill">POST endpoints</span>
+        </div>
+        <div class="grid three">
+          <article class="card">
+            <h3><code>/v1/evaluate-execution</code></h3>
+            <p>Evaluates a proposed consequence-bearing execution route.</p>
+          </article>
+          <article class="card">
+            <h3><code>/v1/evaluate-evidence</code></h3>
+            <p>Evaluates whether an evidence claim is sufficiently preserved, continuous, and reviewable.</p>
+          </article>
+          <article class="card">
+            <h3><code>/v1/check-authority</code></h3>
+            <p>Evaluates authority source, authority scope, and legitimacy for a proposed action.</p>
+          </article>
+          <article class="card">
+            <h3><code>/v1/validate-continuity</code></h3>
+            <p>Evaluates record preservation, sequence completeness, chain of custody, and explained gaps.</p>
+          </article>
+          <article class="card">
+            <h3><code>/v1/reviewability-record</code></h3>
+            <p>Determines whether a submitted entity has a recognizable reviewability surface.</p>
+          </article>
+          <article class="card">
+            <h3><code>/v1/procurement-screen</code></h3>
+            <p>Evaluates AI procurement or vendor routes before deployment reliance.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+    """
+    return _shell("TA-14 API Reference", "Human-readable API reference for the TA-14 public sandbox.", body)
+
+
+@app.get("/boundary", response_class=HTMLResponse, tags=["Human Pages"])
+def boundary_page():
+    body = """
+    <main>
+      <section class="hero">
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow"><span class="pulse"></span> Public boundary</p>
+            <h1>Live does not mean unbounded.</h1>
+            <p class="lead">
+              The TA-14 public API sandbox is live, but it is a bounded reference implementation.
+              It demonstrates admissible execution evaluation without certifying, approving, or guaranteeing any submitted route.
+            </p>
+            <div class="hero-actions">
+              <a class="btn primary" href="/v1/public-boundary">Raw Boundary JSON</a>
+              <a class="btn secondary" href="/api-reference">API Reference</a>
+              <a class="btn blue" href="/docs">Interactive Docs</a>
+            </div>
+          </div>
+          <aside class="panel">
+            <p class="eyebrow">Correct claim</p>
+            <h2>Public sandbox. Not production approval.</h2>
+            <p>
+              TA-14 classifies submitted routes as ALLOW, HOLD, DENY, or ESCALATE based on submitted chain state.
+            </p>
+          </aside>
+        </div>
+      </section>
+
+      <section>
+        <div class="grid three">
+          <article class="card">
+            <span class="num">1</span>
+            <h3>What it is</h3>
+            <p>A public reference API for admissible execution evaluation and route classification.</p>
+          </article>
+          <article class="card">
+            <span class="num">2</span>
+            <h3>What it is not</h3>
+            <p>Not legal advice, compliance certification, safety certification, production approval, or a warranty.</p>
+          </article>
+          <article class="card">
+            <span class="num">3</span>
+            <h3>Production boundary</h3>
+            <p>Enterprise use requires written scope, client-specific rules, signed responses, persistent audit storage, and security review.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+    """
+    return _shell("TA-14 Public API Boundary", "Human-readable boundary page for the TA-14 API Sandbox.", body)
 
 
 @app.get("/health", tags=["System"])
@@ -977,7 +1357,7 @@ def check_authority(
     if not payload.legitimacy_clear:
         failed.append("legitimacy")
 
-    if failed and payload.risk_class in ["high", "critical"]:
+    if failed and payload.risk_class in [RouteRiskClass.HIGH, RouteRiskClass.CRITICAL]:
         decision = Decision.ESCALATE
         reason = "High-risk authority route requires escalation before execution."
         next_step = "Escalate for authority and legitimacy review."
@@ -1103,7 +1483,7 @@ def procurement_screen(
     _require_api_key(x_api_key)
     decision, failed, warnings, reason, next_step = evaluate_execution_payload(payload)
 
-    if payload.risk_class in ["high", "critical"] and decision == Decision.ALLOW:
+    if payload.risk_class in [RouteRiskClass.HIGH, RouteRiskClass.CRITICAL] and decision == Decision.ALLOW:
         decision = Decision.ESCALATE
         warnings.append("High-risk procurement route should receive buyer-side review before deployment.")
         reason = "Procurement route is high risk and should be escalated before consequence-bearing deployment."
