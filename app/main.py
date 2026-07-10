@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import time
-from collections import defaultdict, deque
 from typing import Callable
 from uuid import uuid4
 
@@ -22,6 +20,7 @@ from .engine import (
     evaluate_execution_payload,
     make_meta,
 )
+from .rate_limit import ApiIdentity, ApiKeyRegistry, SandboxRateLimiter, make_usage_store
 from .models import (
     AuthorityCheckRequest,
     ChainSpecResponse,
@@ -40,15 +39,12 @@ from .models import (
 APP_NAME = "TA-14 Admissible Execution API Sandbox"
 
 MAX_BODY_BYTES = int(os.getenv("TA14_MAX_BODY_BYTES", "200000"))
-API_KEY = os.getenv("TA14_API_KEY")
-RATE_LIMIT_ENABLED = os.getenv("TA14_RATE_LIMIT_ENABLED", "false").lower() == "true"
-RATE_LIMIT_MAX = int(os.getenv("TA14_RATE_LIMIT_MAX", "60"))
-RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("TA14_RATE_LIMIT_WINDOW_SECONDS", "60"))
+API_KEY_REGISTRY = ApiKeyRegistry()
+RATE_LIMIT_ENABLED = os.getenv("TA14_RATE_LIMIT_ENABLED", "true").lower() == "true"
+RATE_LIMITER = SandboxRateLimiter(make_usage_store())
 AUDIT_LOG_ENABLED = os.getenv("TA14_AUDIT_LOG", "false").lower() == "true"
 AUDIT_LOG_PATH = os.getenv("TA14_AUDIT_LOG_PATH", "./ta14_audit_log.jsonl")
 CORS_ALLOW_ORIGINS = os.getenv("CORS_ALLOW_ORIGINS", "*")
-
-_request_windows: dict[str, deque[float]] = defaultdict(deque)
 
 
 app = FastAPI(
@@ -92,25 +88,28 @@ def _client_id(request: Request) -> str:
     return "unknown"
 
 
-def _check_rate_limit(request: Request) -> None:
-    if not RATE_LIMIT_ENABLED:
-        return
+def _is_metered_route(request: Request) -> bool:
+    return request.method == "POST" and request.url.path.startswith("/v1/")
 
-    now = time.time()
-    client = _client_id(request)
-    window = _request_windows[client]
 
-    while window and now - window[0] > RATE_LIMIT_WINDOW_SECONDS:
-        window.popleft()
-
-    if len(window) >= RATE_LIMIT_MAX:
-        raise HTTPException(status_code=429, detail="Sandbox rate limit exceeded.")
-
-    window.append(now)
+def _resolve_identity(request: Request) -> ApiIdentity:
+    raw_key = request.headers.get("x-api-key")
+    if raw_key:
+        identity = API_KEY_REGISTRY.resolve(raw_key)
+        if identity is None:
+            raise HTTPException(status_code=401, detail="Missing or invalid API key.")
+        return identity
+    return ApiIdentity(
+        subject=f"ip:{_client_id(request)}",
+        plan="anonymous_sandbox",
+        monthly_limit=None,
+        authenticated=False,
+    )
 
 
 def _require_api_key(x_api_key: str | None) -> None:
-    if API_KEY and x_api_key != API_KEY:
+    # Public sandbox calls may omit a key. If a key is supplied, it must be valid.
+    if x_api_key and API_KEY_REGISTRY.resolve(x_api_key) is None:
         raise HTTPException(status_code=401, detail="Missing or invalid API key.")
 
 
@@ -160,17 +159,43 @@ async def sandbox_middleware(request: Request, call_next: Callable):
             },
         )
 
+    rate_result = None
     try:
-        _check_rate_limit(request)
-        response: Response = await call_next(request)
+        if RATE_LIMIT_ENABLED and _is_metered_route(request):
+            identity = _resolve_identity(request)
+            rate_result = RATE_LIMITER.check(identity)
+            if not rate_result.allowed:
+                response = JSONResponse(
+                    status_code=429,
+                    content={
+                        "meta": make_meta(request_id).model_dump(),
+                        "error": "The free TA-14 sandbox allowance has been used.",
+                        "code": "SANDBOX_QUOTA_EXHAUSTED",
+                        "plan": rate_result.plan,
+                        "limit_scope": rate_result.scope,
+                        "next_step": "Request API Readiness, Partner API, or institutional scope for continued use.",
+                        "request_url": "https://ta14-architecture.netlify.app/request-evaluation",
+                    },
+                )
+            else:
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
     except HTTPException as exc:
-        return JSONResponse(
+        response = JSONResponse(
             status_code=exc.status_code,
             content={
                 "meta": make_meta(request_id).model_dump(),
                 "error": exc.detail,
             },
         )
+
+    if rate_result is not None:
+        response.headers["X-RateLimit-Limit"] = str(rate_result.limit)
+        response.headers["X-RateLimit-Remaining"] = str(rate_result.remaining)
+        response.headers["X-RateLimit-Reset"] = str(rate_result.reset_epoch)
+        response.headers["X-RateLimit-Scope"] = rate_result.scope
+        response.headers["X-RateLimit-Plan"] = rate_result.plan
 
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
