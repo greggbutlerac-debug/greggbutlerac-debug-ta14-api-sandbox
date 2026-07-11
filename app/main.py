@@ -896,164 +896,186 @@ def _shell(title: str, subtitle: str, body: str) -> str:
 
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def root():
-    chain = _chain_text()
     body = f"""
     <main>
       <section class="hero">
         <div class="hero-grid">
           <div>
             <p class="eyebrow"><span class="pulse"></span> Live Public Sandbox · API v{API_VERSION}</p>
-            <h1>Govern the route before action becomes consequence.</h1>
+            <h1>What does TA-14 actually stop?</h1>
             <p class="lead">
-              TA-14 Admissible Execution API Sandbox is a live public reference API for evaluating
-              consequence-bearing AI, automation, evidence, authority, procurement, and runtime routes
-              before they are allowed to matter.
+              TA-14 stops an action from becoming consequence when the submitted route
+              lacks the evidence, continuity, authority, legitimacy, binding, or commit
+              required to proceed.
             </p>
             <div class="hero-actions">
-              <a class="btn primary" href="/docs">Open Interactive Tester</a>
-              <a class="btn secondary" href="/chain">Visual 24-Link Chain</a>
-              <a class="btn secondary" href="/decision-matrix">Decision Matrix</a>
-              <a class="btn blue" href="/api-reference">API Reference</a>
+              <a class="btn primary" href="#payment-demo">See the $500,000 Payment Demo</a>
+              <a class="btn secondary" href="/docs">Open Interactive Tester</a>
+              <a class="btn blue" href="/chain">View the 24-Link Chain</a>
             </div>
           </div>
 
           <aside class="panel">
-            <p class="eyebrow">The TA-14 answer</p>
-            <h2>Authorization is not admissibility.</h2>
+            <p class="eyebrow">The simple answer</p>
+            <h2>TA-14 stops unsupported execution.</h2>
             <p>
-              An agent can have identity, credentials, approved APIs, logs, and policy permission —
-              and still lack the admissible chain required to become consequence.
+              An AI system may have credentials, access, policy permission, and technical
+              capability. That does not prove it has an admissible route to act.
             </p>
-            <div class="chain">{chain}</div>
             <div class="status-grid">
-              <div class="status"><strong>Live</strong><span>Public sandbox endpoint</span></div>
-              <div class="status"><strong>OpenAPI 3.1</strong><span>Machine-readable contract</span></div>
-              <div class="status"><strong>24 links</strong><span>Full TA-14 chain surface</span></div>
-              <div class="status"><strong>4 decisions</strong><span>ALLOW / HOLD / DENY / ESCALATE</span></div>
+              <div class="status"><strong>Missing authority</strong><span>HOLD or ESCALATE</span></div>
+              <div class="status"><strong>Broken continuity</strong><span>HOLD</span></div>
+              <div class="status"><strong>Unsafe condition</strong><span>DENY</span></div>
+              <div class="status"><strong>Complete chain</strong><span>ALLOW</span></div>
             </div>
           </aside>
         </div>
       </section>
 
-      <section>
+      <section id="payment-demo">
         <div class="section-head">
           <div>
-            <p class="eyebrow">Decision boundary</p>
-            <h2>Capability is not clearance.</h2>
+            <p class="eyebrow">Demonstration 01</p>
+            <h2>An AI agent attempts to release $500,000.</h2>
             <p>
-              The API classifies submitted routes through a deterministic sandbox engine.
-              It does not approve systems. It shows whether the submitted chain is sufficient
-              to allow, hold, deny, or escalate the route inside the declared sandbox scope.
+              The payment record exists. The agent identity is known. The transaction is technically
+              possible. But the approving authority is not valid for this amount.
             </p>
           </div>
-          <span class="pill">Sandbox/reference only</span>
-        </div>
-
-        <div class="grid four">
-          <article class="card">
-            <div class="decision allow">ALLOW</div>
-            <p>The submitted route satisfies the sandbox chain conditions for its declared scope.</p>
-          </article>
-          <article class="card">
-            <div class="decision hold">HOLD</div>
-            <p>The route may be valid, but evidence, continuity, authority, reliance, binding, commit, or reviewability is incomplete.</p>
-          </article>
-          <article class="card">
-            <div class="decision deny">DENY</div>
-            <p>The route is outside scope, lacks legitimate authority, or fails core admissibility conditions.</p>
-          </article>
-          <article class="card">
-            <div class="decision escalate">ESCALATE</div>
-            <p>The route requires human, institutional, legal, safety, or partner review before consequence.</p>
-          </article>
-        </div>
-      </section>
-
-      <section>
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">Public endpoints</p>
-            <h2>Built for builders, buyers, and reviewers.</h2>
-            <p>
-              Public visitors get human-readable pages. Developers still get raw JSON endpoints,
-              Swagger/OpenAPI, and machine-readable contracts for integration and testing.
-            </p>
-          </div>
-          <span class="pill">Human pages + developer endpoints</span>
+          <span class="pill">Consequence: funds released</span>
         </div>
 
         <div class="grid two">
-          <div class="card">
-            <h3>Human-facing pages</h3>
+          <article class="card">
+            <h3>What the ordinary workflow sees</h3>
             <div class="endpoint-list">
-              <div class="endpoint"><span><span class="method">VIEW</span> <code>/chain</code></span><span>Visual 24-link TA-14 chain</span></div>
-              <div class="endpoint"><span><span class="method">VIEW</span> <code>/decision-matrix</code></span><span>Decision logic</span></div>
-              <div class="endpoint"><span><span class="method">VIEW</span> <code>/api-reference</code></span><span>Readable API reference</span></div>
-              <div class="endpoint"><span><span class="method">VIEW</span> <code>/boundary</code></span><span>Plain-English public boundary</span></div>
+              <div class="endpoint"><span>Identity verified</span><strong class="allow">PASS</strong></div>
+              <div class="endpoint"><span>Payment record present</span><strong class="allow">PASS</strong></div>
+              <div class="endpoint"><span>API access available</span><strong class="allow">PASS</strong></div>
+              <div class="endpoint"><span>Manager approval submitted</span><strong class="allow">PASS</strong></div>
             </div>
-          </div>
+            <p style="margin-top:18px">
+              A conventional authorization workflow may allow the payment because the agent can access
+              the payment system and a manager approval exists.
+            </p>
+          </article>
 
-          <div class="card">
-            <h3>Core evaluation endpoints</h3>
+          <article class="card">
+            <h3>What TA-14 sees</h3>
             <div class="endpoint-list">
-              <div class="endpoint"><span><span class="method">POST</span> <code>/v1/evaluate-execution</code></span><span>Execution route</span></div>
-              <div class="endpoint"><span><span class="method">POST</span> <code>/v1/evaluate-evidence</code></span><span>Evidence claim</span></div>
-              <div class="endpoint"><span><span class="method">POST</span> <code>/v1/check-authority</code></span><span>Authority scope</span></div>
-              <div class="endpoint"><span><span class="method">POST</span> <code>/v1/procurement-screen</code></span><span>Vendor screen</span></div>
+              <div class="endpoint"><span>Reality and record</span><strong class="allow">PRESENT</strong></div>
+              <div class="endpoint"><span>Identity continuity</span><strong class="allow">PRESENT</strong></div>
+              <div class="endpoint"><span>Authority scope</span><strong class="deny">FAILED</strong></div>
+              <div class="endpoint"><span>Binding before commit</span><strong class="hold">INCOMPLETE</strong></div>
             </div>
-          </div>
+            <div style="margin-top:22px">
+              <div class="decision hold">HOLD</div>
+              <p>
+                Execution must not proceed because the approving authority is not admissible for a
+                $500,000 consequence.
+              </p>
+            </div>
+          </article>
+        </div>
+
+        <div class="cta-row">
+          <a class="btn primary" href="/docs#/Evaluation/evaluate_execution_v1_evaluate_execution_post">
+            Run This Route in the API
+          </a>
+          <a class="btn secondary" href="/decision-matrix">Why TA-14 Returned HOLD</a>
         </div>
       </section>
 
       <section>
         <div class="section-head">
           <div>
-            <p class="eyebrow">Example request</p>
-            <h2>Submit a route. Get a gate decision.</h2>
+            <p class="eyebrow">Three preventable consequences</p>
+            <h2>TA-14 evaluates the route before the action matters.</h2>
             <p>
-              This example shows a high-risk AI procurement route with a continuity gap.
-              The sandbox should hold or escalate before consequence-bearing approval.
+              These examples show the problem in ordinary language. The sandbox remains available
+              for developers who want the full chain status and machine-readable response.
             </p>
           </div>
-          <span class="pill">Copy / paste into /docs</span>
+          <span class="pill">ALLOW / HOLD / DENY / ESCALATE</span>
         </div>
 
-        <div class="codebox">
-<pre><code>{{
-  "route_name": "AI procurement agent vendor approval route",
-  "proposed_action": "Approve a vendor for pilot deployment",
-  "risk_class": "high",
-  "reality_valid": true,
-  "record_preserved": true,
-  "continuity_intact": false,
-  "evidence_sufficient": true,
-  "reliance_justified": false,
-  "authority_source": "Department manager approval policy",
-  "authority_in_scope": true,
-  "legitimacy_clear": true,
-  "consequence_defined": "The vendor may enter an enterprise pilot and influence procurement reliance.",
-  "binding_clear": true,
-  "commit_point_known": true,
-  "execution_reversible": false,
-  "outcome_reviewable": true,
-  "human_review_available": true,
-  "metadata": {{
-    "example": true,
-    "domain": "AI procurement"
-  }}
-}}</code></pre>
+        <div class="grid three">
+          <article class="card">
+            <span class="num">1</span>
+            <h3>Unauthorized payment</h3>
+            <div class="decision hold">HOLD</div>
+            <p>
+              The system can release the money, but the authority source does not cover the amount
+              or consequence.
+            </p>
+          </article>
+
+          <article class="card">
+            <span class="num">2</span>
+            <h3>Unsafe building action</h3>
+            <div class="decision deny">DENY</div>
+            <p>
+              Automation attempts to begin an occupied event while environmental conditions remain
+              unsafe or unresolved.
+            </p>
+          </article>
+
+          <article class="card">
+            <span class="num">3</span>
+            <h3>High-impact institutional action</h3>
+            <div class="decision escalate">ESCALATE</div>
+            <p>
+              Evidence may exist, but legal, human, safety, or institutional standing requires
+              qualified review before consequence.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">The governing question</p>
+            <h2>Can the system prove why it was allowed to act?</h2>
+            <p>
+              TA-14 does not ask only whether the AI can perform the action. It evaluates whether
+              the submitted chain is sufficient for that action to become an admissible consequence.
+            </p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="grid four">
+            <div>
+              <h3>Evidence</h3>
+              <p>Is the supporting record preserved, governed, and sufficient?</p>
+            </div>
+            <div>
+              <h3>Authority</h3>
+              <p>Does the actor have legitimate authority for this exact action?</p>
+            </div>
+            <div>
+              <h3>Binding and commit</h3>
+              <p>Is the consequence properly attached before execution begins?</p>
+            </div>
+            <div>
+              <h3>Outcome and memory</h3>
+              <p>Can the result be reviewed, preserved, and carried into the future chain?</p>
+            </div>
+          </div>
         </div>
 
         <div class="cta-row">
-          <a class="btn primary" href="/docs">Test Evaluate Execution</a>
-          <a class="btn secondary" href="/boundary">Read Public Boundary</a>
+          <a class="btn primary" href="/docs">Test a Route</a>
+          <a class="btn secondary" href="/api-reference">Read the API Reference</a>
+          <a class="btn secondary" href="/boundary">Read the Public Boundary</a>
         </div>
       </section>
     </main>
     """
     return _shell(
-        "TA-14 API Sandbox | Admissible Execution",
-        "TA-14 Admissible Execution API Sandbox — live public reference API for consequence-bearing execution routes.",
+        "What Does TA-14 Stop? | TA-14 API Sandbox",
+        "See how TA-14 holds, denies, or escalates unsupported execution before action becomes consequence.",
         body,
     )
 
