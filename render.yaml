@@ -3,22 +3,45 @@ services:
     name: ta14-api-sandbox
     runtime: python
     plan: starter
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && pip install "redis>=5,<7"
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+
     envVars:
       - key: TA14_MODE
         value: sandbox
+
       - key: TA14_RATE_LIMIT_ENABLED
         value: "true"
+
       - key: TA14_ANON_HOURLY_LIMIT
         value: "5"
+
       - key: TA14_ANON_DAILY_LIMIT
         value: "20"
+
       - key: TA14_KEY_MONTHLY_LIMIT
         value: "100"
+
       - key: TA14_MAX_BODY_BYTES
         value: "65536"
+
       - key: TA14_AUDIT_LOG
         value: "false"
+
       - key: CORS_ALLOW_ORIGINS
         value: "*"
+
+      - key: TA14_REDIS_URL
+        fromService:
+          type: keyvalue
+          name: ta14-usage-counters
+          property: connectionString
+
+  - type: keyvalue
+    name: ta14-usage-counters
+    plan: starter
+    region: oregon
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+    persistenceMode: journal-snapshot
