@@ -1,0 +1,88 @@
+name: TA-14 Synthetic Sandbox Activity
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+    - cron: "41 8 * * *"
+    - cron: "23 14 * * *"
+    - cron: "49 20 * * *"
+
+  workflow_dispatch:
+    inputs:
+      run_count:
+        description: "Optional number of synthetic evaluations for a manual test"
+        required: false
+        default: "1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ta14-synthetic-sandbox-activity
+  cancel-in-progress: false
+
+jobs:
+  run-synthetic-activity:
+    name: Run labeled synthetic sandbox scenarios
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      TA14_SANDBOX_BASE_URL: >-
+        https://greggbutlerac-debug-ta14-api-sandbox.onrender.com
+      TA14_RUN_CLASS: synthetic_demo
+      TA14_RUN_SOURCE: github_actions_scheduled_runner
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Check out sandbox repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runner dependency
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests==2.32.3
+
+      - name: Determine batch size
+        id: batch
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            COUNT="${{ github.event.inputs.run_count }}"
+          else
+            COUNT=$((5 + RANDOM % 4))
+          fi
+
+          if ! [[ "$COUNT" =~ ^[0-9]+$ ]]; then
+            echo "Invalid run count: $COUNT"
+            exit 1
+          fi
+
+          if [ "$COUNT" -lt 1 ] || [ "$COUNT" -gt 10 ]; then
+            echo "Run count must be between 1 and 10 per batch."
+            exit 1
+          fi
+
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Synthetic batch size: $COUNT"
+
+      - name: Run synthetic scenarios
+        env:
+          TA14_SYNTHETIC_RUN_COUNT: ${{ steps.batch.outputs.count }}
+          TA14_SYNTHETIC_API_KEY: ${{ secrets.TA14_SYNTHETIC_API_KEY }}
+        run: |
+          python automation/synthetic_runner.py
+
+      - name: Upload runner log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ta14-synthetic-run-${{ github.run_id }}
+          path: automation/logs/
+          if-no-files-found: ignore
+          retention-days: 14
