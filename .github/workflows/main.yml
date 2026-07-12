@@ -10,9 +10,14 @@ on:
   workflow_dispatch:
     inputs:
       run_count:
-        description: "Optional number of synthetic evaluations for a manual test"
-        required: false
+        description: "Number of synthetic evaluations, from 1 through 10"
+        required: true
         default: "1"
+
+      scenario_id:
+        description: "Optional exact scenario ID, such as SYN-ALLOW-001"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -25,7 +30,7 @@ jobs:
   run-synthetic-activity:
     name: Run labeled synthetic sandbox scenarios
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     env:
       TA14_SANDBOX_BASE_URL: >-
@@ -48,14 +53,16 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install requests==2.32.3
 
-      - name: Determine batch size
+      - name: Determine batch configuration
         id: batch
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             COUNT="${{ github.event.inputs.run_count }}"
+            SCENARIO_ID="${{ github.event.inputs.scenario_id }}"
           else
             COUNT=$((5 + RANDOM % 4))
+            SCENARIO_ID=""
           fi
 
           if ! [[ "$COUNT" =~ ^[0-9]+$ ]]; then
@@ -69,11 +76,20 @@ jobs:
           fi
 
           echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "scenario_id=$SCENARIO_ID" >> "$GITHUB_OUTPUT"
+
           echo "Synthetic batch size: $COUNT"
+
+          if [ -n "$SCENARIO_ID" ]; then
+            echo "Selected scenario: $SCENARIO_ID"
+          else
+            echo "Selected scenario: random"
+          fi
 
       - name: Run synthetic scenarios
         env:
           TA14_SYNTHETIC_RUN_COUNT: ${{ steps.batch.outputs.count }}
+          TA14_SYNTHETIC_SCENARIO_ID: ${{ steps.batch.outputs.scenario_id }}
           TA14_SYNTHETIC_API_KEY: ${{ secrets.TA14_SYNTHETIC_API_KEY }}
         run: |
           python automation/synthetic_runner.py
