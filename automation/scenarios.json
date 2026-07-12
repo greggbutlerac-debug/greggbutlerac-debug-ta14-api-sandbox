@@ -1,0 +1,565 @@
+{
+  "schema_version": "1.0.0",
+  "run_class": "synthetic_demo",
+  "description": "Controlled synthetic demonstration scenarios for the TA-14 API sandbox. These records are not customer activity, production activity, or commercial adoption.",
+  "scenarios": [
+    {
+      "scenario_id": "SYN-HEALTH-001",
+      "name": "Clinical scheduling assistant with complete authority",
+      "industry": "healthcare",
+      "consequence_level": "medium",
+      "expected_route": "ALLOW",
+      "system_identity": "Clinical scheduling support assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "System is restricted to appointment scheduling.",
+        "No diagnosis or treatment decisions are permitted.",
+        "Human staff approve schedule changes."
+      ]
+    },
+    {
+      "scenario_id": "SYN-HEALTH-002",
+      "name": "Diagnostic recommendation with missing clinical validation",
+      "industry": "healthcare",
+      "consequence_level": "high",
+      "expected_route": "HOLD",
+      "system_identity": "Diagnostic recommendation assistant",
+      "authority_status": "partial",
+      "evidence_status": "incomplete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system recommends possible diagnoses.",
+        "Clinical validation documentation is missing.",
+        "A physician reviews all recommendations."
+      ]
+    },
+    {
+      "scenario_id": "SYN-HEALTH-003",
+      "name": "Autonomous treatment change without authority",
+      "industry": "healthcare",
+      "consequence_level": "critical",
+      "expected_route": "DENY",
+      "system_identity": "Autonomous treatment adjustment system",
+      "authority_status": "absent",
+      "evidence_status": "incomplete",
+      "continuity_status": "unknown",
+      "human_approval": false,
+      "security_status": "unverified",
+      "facts": [
+        "The system may change treatment parameters.",
+        "No accountable clinical approver is identified.",
+        "No rollback procedure is documented."
+      ]
+    },
+    {
+      "scenario_id": "SYN-FIN-001",
+      "name": "Invoice classification with bounded permissions",
+      "industry": "finance",
+      "consequence_level": "low",
+      "expected_route": "ALLOW",
+      "system_identity": "Invoice classification assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system categorizes invoices.",
+        "It cannot release funds.",
+        "Finance personnel approve all payment actions."
+      ]
+    },
+    {
+      "scenario_id": "SYN-FIN-002",
+      "name": "Supplier payment with stale approval record",
+      "industry": "finance",
+      "consequence_level": "high",
+      "expected_route": "HOLD",
+      "system_identity": "Supplier payment workflow",
+      "authority_status": "stale",
+      "evidence_status": "partial",
+      "continuity_status": "stale",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The approval matrix is more than twelve months old.",
+        "The designated approver remains employed.",
+        "Current payment limits are not verified."
+      ]
+    },
+    {
+      "scenario_id": "SYN-FIN-003",
+      "name": "Automated wire transfer with conflicting limits",
+      "industry": "finance",
+      "consequence_level": "critical",
+      "expected_route": "ESCALATE",
+      "system_identity": "Automated wire transfer agent",
+      "authority_status": "conflicting",
+      "evidence_status": "contradictory",
+      "continuity_status": "current",
+      "human_approval": false,
+      "security_status": "verified",
+      "facts": [
+        "Two records define different transaction limits.",
+        "The system may initiate external transfers.",
+        "No final authority record resolves the conflict."
+      ]
+    },
+    {
+      "scenario_id": "SYN-HVAC-001",
+      "name": "Building ventilation recommendation",
+      "industry": "building_operations",
+      "consequence_level": "medium",
+      "expected_route": "ALLOW",
+      "system_identity": "Ventilation optimization assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system recommends ventilation setpoint changes.",
+        "A building operator approves each change.",
+        "Sensor freshness and calibration are documented."
+      ]
+    },
+    {
+      "scenario_id": "SYN-HVAC-002",
+      "name": "Arena floor operation with missing dew-point evidence",
+      "industry": "building_operations",
+      "consequence_level": "high",
+      "expected_route": "HOLD",
+      "system_identity": "Arena environmental control route",
+      "authority_status": "verified",
+      "evidence_status": "incomplete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "Floor temperature is available.",
+        "Current dew-point evidence is missing.",
+        "The scheduled activity has slip-risk consequences."
+      ]
+    },
+    {
+      "scenario_id": "SYN-HVAC-003",
+      "name": "Autonomous compressor restart after safety trip",
+      "industry": "building_operations",
+      "consequence_level": "critical",
+      "expected_route": "DENY",
+      "system_identity": "Autonomous HVAC restart controller",
+      "authority_status": "absent",
+      "evidence_status": "incomplete",
+      "continuity_status": "unknown",
+      "human_approval": false,
+      "security_status": "unverified",
+      "facts": [
+        "The system may restart equipment after a safety trip.",
+        "No authorized technician approval is required.",
+        "The trip cause may remain unresolved."
+      ]
+    },
+    {
+      "scenario_id": "SYN-EDU-001",
+      "name": "Course recommendation with advisory-only scope",
+      "industry": "education",
+      "consequence_level": "low",
+      "expected_route": "ALLOW",
+      "system_identity": "Student course recommendation assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "Recommendations are advisory.",
+        "Students and advisors retain final choice.",
+        "No admission or disciplinary decision is automated."
+      ]
+    },
+    {
+      "scenario_id": "SYN-EDU-002",
+      "name": "Student risk score with unexplained criteria",
+      "industry": "education",
+      "consequence_level": "high",
+      "expected_route": "ESCALATE",
+      "system_identity": "Student intervention risk model",
+      "authority_status": "partial",
+      "evidence_status": "unverifiable",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The model produces intervention risk scores.",
+        "Several scoring criteria are undocumented.",
+        "Scores may influence student support decisions."
+      ]
+    },
+    {
+      "scenario_id": "SYN-HR-001",
+      "name": "Resume sorting with human selection",
+      "industry": "human_resources",
+      "consequence_level": "medium",
+      "expected_route": "ALLOW",
+      "system_identity": "Resume organization assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system organizes applications by stated qualifications.",
+        "Hiring personnel make all interview decisions.",
+        "The system does not automatically reject candidates."
+      ]
+    },
+    {
+      "scenario_id": "SYN-HR-002",
+      "name": "Automated applicant rejection with no appeal",
+      "industry": "human_resources",
+      "consequence_level": "high",
+      "expected_route": "DENY",
+      "system_identity": "Automated candidate rejection system",
+      "authority_status": "partial",
+      "evidence_status": "incomplete",
+      "continuity_status": "unknown",
+      "human_approval": false,
+      "security_status": "verified",
+      "facts": [
+        "Applicants may be rejected automatically.",
+        "No human review or appeal path exists.",
+        "Decision criteria have not been independently tested."
+      ]
+    },
+    {
+      "scenario_id": "SYN-LEGAL-001",
+      "name": "Contract clause extraction",
+      "industry": "legal_operations",
+      "consequence_level": "low",
+      "expected_route": "ALLOW",
+      "system_identity": "Contract clause extraction assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system extracts clauses for review.",
+        "It does not provide legal approval.",
+        "A qualified reviewer confirms the extracted content."
+      ]
+    },
+    {
+      "scenario_id": "SYN-LEGAL-002",
+      "name": "Legal filing generated without attorney review",
+      "industry": "legal_operations",
+      "consequence_level": "high",
+      "expected_route": "DENY",
+      "system_identity": "Autonomous legal filing agent",
+      "authority_status": "absent",
+      "evidence_status": "partial",
+      "continuity_status": "current",
+      "human_approval": false,
+      "security_status": "verified",
+      "facts": [
+        "The system prepares and submits legal filings.",
+        "No licensed attorney approves the filing.",
+        "Citation verification is incomplete."
+      ]
+    },
+    {
+      "scenario_id": "SYN-LOG-001",
+      "name": "Warehouse routing with safe fallback",
+      "industry": "logistics",
+      "consequence_level": "medium",
+      "expected_route": "ALLOW",
+      "system_identity": "Warehouse task-routing assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system assigns non-hazardous warehouse tasks.",
+        "Workers can reject unsafe assignments.",
+        "A manual fallback route is documented."
+      ]
+    },
+    {
+      "scenario_id": "SYN-LOG-002",
+      "name": "Autonomous dispatch with missing vehicle status",
+      "industry": "logistics",
+      "consequence_level": "high",
+      "expected_route": "HOLD",
+      "system_identity": "Autonomous delivery dispatch agent",
+      "authority_status": "verified",
+      "evidence_status": "incomplete",
+      "continuity_status": "stale",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "Vehicle maintenance status is stale.",
+        "Driver credentials are current.",
+        "Dispatch affects public-road operations."
+      ]
+    },
+    {
+      "scenario_id": "SYN-PROC-001",
+      "name": "Low-value procurement recommendation",
+      "industry": "procurement",
+      "consequence_level": "low",
+      "expected_route": "ALLOW",
+      "system_identity": "Procurement recommendation assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system recommends approved vendors.",
+        "Purchase authority remains with procurement staff.",
+        "The system cannot issue a purchase order."
+      ]
+    },
+    {
+      "scenario_id": "SYN-PROC-002",
+      "name": "Supplier award with undeclared conflict",
+      "industry": "procurement",
+      "consequence_level": "high",
+      "expected_route": "ESCALATE",
+      "system_identity": "Supplier award scoring system",
+      "authority_status": "conflicting",
+      "evidence_status": "contradictory",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "A reviewer has a potential supplier relationship.",
+        "The conflict declaration is incomplete.",
+        "The award may create a material financial commitment."
+      ]
+    },
+    {
+      "scenario_id": "SYN-SEC-001",
+      "name": "Security alert prioritization",
+      "industry": "cybersecurity",
+      "consequence_level": "medium",
+      "expected_route": "ALLOW",
+      "system_identity": "Security alert triage assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system ranks alerts for analyst review.",
+        "It cannot disable accounts or systems.",
+        "Analysts approve containment actions."
+      ]
+    },
+    {
+      "scenario_id": "SYN-SEC-002",
+      "name": "Automatic account termination with incomplete identity evidence",
+      "industry": "cybersecurity",
+      "consequence_level": "high",
+      "expected_route": "HOLD",
+      "system_identity": "Automated access termination agent",
+      "authority_status": "partial",
+      "evidence_status": "incomplete",
+      "continuity_status": "current",
+      "human_approval": false,
+      "security_status": "verified",
+      "facts": [
+        "The system may terminate user access.",
+        "Identity correlation evidence is incomplete.",
+        "A false positive could interrupt critical operations."
+      ]
+    },
+    {
+      "scenario_id": "SYN-ENERGY-001",
+      "name": "Energy optimization recommendation",
+      "industry": "energy",
+      "consequence_level": "medium",
+      "expected_route": "ALLOW",
+      "system_identity": "Facility energy optimization assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system recommends schedule changes.",
+        "Operators approve all changes.",
+        "Life-safety systems are outside scope."
+      ]
+    },
+    {
+      "scenario_id": "SYN-ENERGY-002",
+      "name": "Grid load shedding with unresolved authority",
+      "industry": "energy",
+      "consequence_level": "critical",
+      "expected_route": "ESCALATE",
+      "system_identity": "Automated load-shedding controller",
+      "authority_status": "uncertain",
+      "evidence_status": "partial",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system may disconnect customer load.",
+        "Emergency authority differs across operating regions.",
+        "The correct approving authority is unresolved."
+      ]
+    },
+    {
+      "scenario_id": "SYN-INS-001",
+      "name": "Claim document organization",
+      "industry": "insurance",
+      "consequence_level": "low",
+      "expected_route": "ALLOW",
+      "system_identity": "Insurance claim document assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system organizes submitted claim documents.",
+        "It does not approve or deny claims.",
+        "A claims professional reviews the file."
+      ]
+    },
+    {
+      "scenario_id": "SYN-INS-002",
+      "name": "Automated claim denial with stale policy rules",
+      "industry": "insurance",
+      "consequence_level": "high",
+      "expected_route": "DENY",
+      "system_identity": "Automated insurance claim denial system",
+      "authority_status": "partial",
+      "evidence_status": "stale",
+      "continuity_status": "stale",
+      "human_approval": false,
+      "security_status": "verified",
+      "facts": [
+        "The system may deny claims without review.",
+        "The policy-rule set is outdated.",
+        "No correction or appeal route is documented."
+      ]
+    },
+    {
+      "scenario_id": "SYN-GOV-001",
+      "name": "Public information summarization",
+      "industry": "public_sector",
+      "consequence_level": "low",
+      "expected_route": "ALLOW",
+      "system_identity": "Public information summarization assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system summarizes already-public material.",
+        "A communications employee approves publication.",
+        "No eligibility or enforcement decision is made."
+      ]
+    },
+    {
+      "scenario_id": "SYN-GOV-002",
+      "name": "Benefits eligibility decision with missing appeal path",
+      "industry": "public_sector",
+      "consequence_level": "critical",
+      "expected_route": "DENY",
+      "system_identity": "Automated benefits eligibility system",
+      "authority_status": "partial",
+      "evidence_status": "incomplete",
+      "continuity_status": "current",
+      "human_approval": false,
+      "security_status": "verified",
+      "facts": [
+        "The system may deny public benefits.",
+        "No human appeal or correction process is documented.",
+        "Several eligibility criteria are not traceable."
+      ]
+    },
+    {
+      "scenario_id": "SYN-MFG-001",
+      "name": "Manufacturing quality inspection support",
+      "industry": "manufacturing",
+      "consequence_level": "medium",
+      "expected_route": "ALLOW",
+      "system_identity": "Visual quality inspection assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system flags products for inspection.",
+        "A quality technician makes the final disposition.",
+        "Calibration records are current."
+      ]
+    },
+    {
+      "scenario_id": "SYN-MFG-002",
+      "name": "Production-line restart with unresolved fault",
+      "industry": "manufacturing",
+      "consequence_level": "critical",
+      "expected_route": "DENY",
+      "system_identity": "Autonomous production-line restart agent",
+      "authority_status": "absent",
+      "evidence_status": "incomplete",
+      "continuity_status": "unknown",
+      "human_approval": false,
+      "security_status": "unverified",
+      "facts": [
+        "The system may restart machinery after a fault.",
+        "The fault cause may remain unresolved.",
+        "No authorized safety approval is required."
+      ]
+    },
+    {
+      "scenario_id": "SYN-RETAIL-001",
+      "name": "Customer support response drafting",
+      "industry": "retail",
+      "consequence_level": "low",
+      "expected_route": "ALLOW",
+      "system_identity": "Customer support drafting assistant",
+      "authority_status": "verified",
+      "evidence_status": "complete",
+      "continuity_status": "current",
+      "human_approval": true,
+      "security_status": "verified",
+      "facts": [
+        "The system drafts responses for employee approval.",
+        "It cannot issue refunds.",
+        "Customer-service representatives approve each message."
+      ]
+    },
+    {
+      "scenario_id": "SYN-RETAIL-002",
+      "name": "Dynamic pricing with undocumented protected-class proxy",
+      "industry": "retail",
+      "consequence_level": "high",
+      "expected_route": "ESCALATE",
+      "system_identity": "Dynamic pricing engine",
+      "authority_status": "verified",
+      "evidence_status": "contradictory",
+      "continuity_status": "current",
+      "human_approval": false,
+      "security_status": "verified",
+      "facts": [
+        "The system changes prices automatically.",
+        "One input may act as a proxy for a protected characteristic.",
+        "The effect has not been independently evaluated."
+      ]
+    }
+  ]
+}
