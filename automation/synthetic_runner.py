@@ -2,15 +2,13 @@
 """
 TA-14 controlled synthetic sandbox activity runner.
 
-Purpose:
-- Select varied scenarios from automation/scenarios.json.
-- Send clearly labeled synthetic demonstration requests to the TA-14 sandbox.
-- Record accepted, rejected, and failed requests in automation/logs/.
-- Avoid representing synthetic traffic as customer activity or production use.
-
-The runner discovers the sandbox endpoint and request contract from OpenAPI.
-It also attempts to use repository example JSON files when they are valid.
-Unreadable, binary, or malformed example files are skipped safely.
+Capabilities:
+- Runs random scenarios from automation/scenarios.json.
+- Accepts an exact scenario through TA14_SYNTHETIC_SCENARIO_ID.
+- Includes a deterministic fully supported route named SYN-ALLOW-001.
+- Discovers the live request schema from OpenAPI.
+- Labels all activity as synthetic demonstration traffic.
+- Writes JSONL execution logs to automation/logs/.
 """
 
 from __future__ import annotations
@@ -25,7 +23,6 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urljoin
 
 import requests
 
@@ -38,65 +35,54 @@ LOG_DIR = AUTOMATION_DIR / "logs"
 DEFAULT_BASE_URL = (
     "https://greggbutlerac-debug-ta14-api-sandbox.onrender.com"
 )
+DEFAULT_ENDPOINT = "/v1/evaluate-execution"
+
 DEFAULT_RUN_COUNT = 1
 MAX_BATCH_SIZE = 10
 DEFAULT_TIMEOUT_SECONDS = 60
-DEFAULT_DELAY_MIN_SECONDS = 8
-DEFAULT_DELAY_MAX_SECONDS = 20
-
-EXAMPLE_FILES = (
-    ROOT_DIR / "evaluate-execution.json",
-    ROOT_DIR / "examples" / "evaluate-execution.json",
-    ROOT_DIR / "evaluate-evidence.json",
-    ROOT_DIR / "examples" / "evaluate-evidence.json",
-)
-
-PREFERRED_ENDPOINTS = (
-    "/v1/evaluate",
-    "/evaluate",
-    "/v1/evaluate-execution",
-    "/evaluate-execution",
-    "/v1/evidence/evaluate",
-    "/evidence/evaluate",
-    "/api/evaluate",
-)
+DEFAULT_DELAY_MIN_SECONDS = 7
+DEFAULT_DELAY_MAX_SECONDS = 16
 
 FINAL_ROUTES = ("ALLOW", "HOLD", "DENY", "ESCALATE")
 
-TRUE_WORDS = {
-    "verified",
-    "complete",
-    "current",
-    "valid",
-    "present",
-    "approved",
-    "authorized",
-    "sufficient",
-}
 
-FALSE_WORDS = {
-    "absent",
-    "missing",
-    "incomplete",
-    "stale",
-    "invalid",
-    "unverified",
-    "unknown",
-    "prohibited",
+BUILT_IN_ALLOW_SCENARIO: dict[str, Any] = {
+    "scenario_id": "SYN-ALLOW-001",
+    "name": "Fully supported bounded execution route",
+    "industry": "governed_operations",
+    "consequence_level": "low",
+    "expected_route": "ALLOW",
+    "force_profile": "allow",
+    "system_identity": "Bounded synthetic execution assistant",
+    "authority_status": "verified",
+    "evidence_status": "complete",
+    "continuity_status": "current",
+    "human_approval": True,
+    "security_status": "verified",
+    "facts": [
+        "The system identity is established.",
+        "The proposed action is narrowly bounded.",
+        "The evidence record is complete and current.",
+        "Record continuity and chain of custody are preserved.",
+        "The actor has verified authority for the declared scope.",
+        "Legitimacy is clear.",
+        "Human approval is present.",
+        "No unresolved safety condition exists.",
+        "The execution can be stopped before consequence.",
+        "Outcome recording and review are available."
+    ],
 }
 
 
 class RunnerConfigurationError(RuntimeError):
-    """Raised when the runner cannot be configured safely."""
+    """Raised when the synthetic runner cannot be configured safely."""
 
 
 def utc_now() -> str:
-    """Return a timezone-aware UTC timestamp."""
     return datetime.now(timezone.utc).isoformat()
 
 
 def read_integer_environment(name: str, default: int) -> int:
-    """Read an integer environment variable."""
     raw_value = os.getenv(name)
 
     if raw_value is None or not raw_value.strip():
@@ -106,59 +92,41 @@ def read_integer_environment(name: str, default: int) -> int:
         return int(raw_value)
     except ValueError as exc:
         raise RunnerConfigurationError(
-            f"{name} must be an integer. Received {raw_value!r}."
+            f"{name} must contain a whole number."
         ) from exc
 
 
 def normalize_base_url(value: str) -> str:
-    """Validate and normalize the sandbox URL."""
     cleaned = value.strip()
-
-    if not cleaned:
-        raise RunnerConfigurationError(
-            "TA14_SANDBOX_BASE_URL cannot be empty."
-        )
 
     if not cleaned.startswith(("https://", "http://")):
         raise RunnerConfigurationError(
-            "TA14_SANDBOX_BASE_URL must begin with "
-            "https:// or http://."
+            "TA14_SANDBOX_BASE_URL must begin with https:// or http://."
         )
 
     return cleaned.rstrip("/")
 
 
 def load_json_file(path: Path) -> Any:
-    """
-    Load a JSON file.
-
-    utf-8-sig supports normal UTF-8 files and files containing a UTF-8
-    byte-order marker. Binary, malformed, or unsupported encodings produce
-    a controlled error instead of crashing the workflow.
-    """
     try:
         with path.open("r", encoding="utf-8-sig") as file_handle:
             return json.load(file_handle)
-
     except FileNotFoundError as exc:
         raise RunnerConfigurationError(
             f"Required file was not found: {path}"
         ) from exc
-
     except UnicodeDecodeError as exc:
         raise RunnerConfigurationError(
             f"File is not readable UTF-8 JSON: {path}"
         ) from exc
-
     except json.JSONDecodeError as exc:
         raise RunnerConfigurationError(
-            f"Invalid JSON in {path}. "
-            f"Line {exc.lineno}, column {exc.colno}: {exc.msg}"
+            f"Invalid JSON in {path}: "
+            f"line {exc.lineno}, column {exc.colno}: {exc.msg}"
         ) from exc
 
 
 def load_scenarios() -> list[dict[str, Any]]:
-    """Load and validate automation/scenarios.json."""
     document = load_json_file(SCENARIO_FILE)
 
     if not isinstance(document, dict):
@@ -166,39 +134,68 @@ def load_scenarios() -> list[dict[str, Any]]:
             "scenarios.json must contain a JSON object."
         )
 
-    scenarios = document.get("scenarios")
+    raw_scenarios = document.get("scenarios")
 
-    if not isinstance(scenarios, list) or not scenarios:
+    if not isinstance(raw_scenarios, list):
         raise RunnerConfigurationError(
-            "scenarios.json must contain a non-empty 'scenarios' array."
+            "scenarios.json must contain a scenarios array."
         )
 
-    validated: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
+    scenarios: list[dict[str, Any]] = [
+        copy.deepcopy(BUILT_IN_ALLOW_SCENARIO)
+    ]
 
-    for index, scenario in enumerate(scenarios, start=1):
+    seen_ids = {BUILT_IN_ALLOW_SCENARIO["scenario_id"]}
+
+    for index, scenario in enumerate(raw_scenarios, start=1):
         if not isinstance(scenario, dict):
             raise RunnerConfigurationError(
-                f"Scenario {index} must be a JSON object."
+                f"Scenario {index} is not a JSON object."
             )
 
-        scenario_id = str(scenario.get("scenario_id", "")).strip()
-        name = str(scenario.get("name", "")).strip()
+        scenario_id = str(
+            scenario.get("scenario_id", "")
+        ).strip()
 
-        if not scenario_id or not name:
+        scenario_name = str(
+            scenario.get("name", "")
+        ).strip()
+
+        if not scenario_id or not scenario_name:
             raise RunnerConfigurationError(
                 f"Scenario {index} requires scenario_id and name."
             )
 
         if scenario_id in seen_ids:
-            raise RunnerConfigurationError(
-                f"Duplicate scenario_id: {scenario_id}"
-            )
+            continue
 
         seen_ids.add(scenario_id)
-        validated.append(scenario)
+        scenarios.append(scenario)
 
-    return validated
+    return scenarios
+
+
+def resolve_reference(
+    openapi_document: dict[str, Any],
+    reference: str,
+) -> dict[str, Any]:
+    if not reference.startswith("#/"):
+        return {}
+
+    current: Any = openapi_document
+
+    for part in reference[2:].split("/"):
+        decoded = part.replace("~1", "/").replace("~0", "~")
+
+        if not isinstance(current, dict):
+            return {}
+
+        if decoded not in current:
+            return {}
+
+        current = current[decoded]
+
+    return current if isinstance(current, dict) else {}
 
 
 def fetch_openapi(
@@ -206,135 +203,60 @@ def fetch_openapi(
     base_url: str,
     timeout_seconds: int,
 ) -> dict[str, Any]:
-    """Fetch the deployed FastAPI OpenAPI document."""
-    openapi_url = f"{base_url}/openapi.json"
+    url = f"{base_url}/openapi.json"
 
     try:
-        response = session.get(
-            openapi_url,
-            timeout=timeout_seconds,
-        )
+        response = session.get(url, timeout=timeout_seconds)
         response.raise_for_status()
         document = response.json()
-
     except requests.RequestException as exc:
         raise RunnerConfigurationError(
-            f"Could not retrieve OpenAPI from {openapi_url}: {exc}"
+            f"Unable to retrieve OpenAPI from {url}: {exc}"
         ) from exc
-
     except ValueError as exc:
         raise RunnerConfigurationError(
-            f"OpenAPI response from {openapi_url} was not valid JSON."
+            "The OpenAPI response was not valid JSON."
         ) from exc
 
     if not isinstance(document, dict):
         raise RunnerConfigurationError(
-            "OpenAPI document must be a JSON object."
+            "The OpenAPI document was not a JSON object."
         )
 
     return document
 
 
-def operation_looks_like_evaluation(
-    path: str,
-    operation: dict[str, Any],
-) -> bool:
-    """Determine whether an OpenAPI POST operation is an evaluation route."""
-    combined = " ".join(
-        (
-            path,
-            str(operation.get("operationId", "")),
-            str(operation.get("summary", "")),
-            str(operation.get("description", "")),
-        )
-    ).lower()
-
-    terms = (
-        "evaluate",
-        "evaluation",
-        "execution",
-        "evidence",
-        "admissib",
-        "route",
-    )
-
-    return any(term in combined for term in terms)
-
-
-def discover_endpoint(
+def find_evaluation_operation(
     openapi_document: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
-    """Find the most likely POST evaluation endpoint and operation."""
     paths = openapi_document.get("paths", {})
 
     if not isinstance(paths, dict):
         raise RunnerConfigurationError(
-            "OpenAPI document does not contain a valid paths object."
+            "OpenAPI does not contain a paths object."
         )
 
-    candidates: list[tuple[str, dict[str, Any]]] = []
-
-    for path, methods in paths.items():
-        if not isinstance(path, str) or not isinstance(methods, dict):
-            continue
-
-        post_operation = methods.get("post")
-
-        if not isinstance(post_operation, dict):
-            continue
-
-        if operation_looks_like_evaluation(path, post_operation):
-            candidates.append((path, post_operation))
-
-    for preferred in PREFERRED_ENDPOINTS:
-        for candidate_path, operation in candidates:
-            if candidate_path == preferred:
-                return candidate_path, operation
-
-    if candidates:
-        candidates.sort(
-            key=lambda item: (
-                0 if "evaluate" in item[0].lower() else 1,
-                len(item[0]),
-                item[0],
-            )
-        )
-        return candidates[0]
-
-    available_post_paths = []
-
-    for path, methods in paths.items():
-        if isinstance(methods, dict) and isinstance(
-            methods.get("post"),
-            dict,
-        ):
-            available_post_paths.append(str(path))
-
-    raise RunnerConfigurationError(
-        "No evaluation POST endpoint was found. "
-        f"Available POST endpoints: {available_post_paths}"
+    preferred_paths = (
+        "/v1/evaluate-execution",
+        "/v1/evaluate-evidence",
+        "/v1/check-authority",
+        "/v1/validate-continuity",
     )
 
+    for path in preferred_paths:
+        methods = paths.get(path)
 
-def resolve_reference(
-    openapi_document: dict[str, Any],
-    reference: str,
-) -> dict[str, Any]:
-    """Resolve a local OpenAPI JSON reference."""
-    if not reference.startswith("#/"):
-        return {}
+        if not isinstance(methods, dict):
+            continue
 
-    current: Any = openapi_document
+        operation = methods.get("post")
 
-    for part in reference[2:].split("/"):
-        part = part.replace("~1", "/").replace("~0", "~")
+        if isinstance(operation, dict):
+            return path, operation
 
-        if not isinstance(current, dict) or part not in current:
-            return {}
-
-        current = current[part]
-
-    return current if isinstance(current, dict) else {}
+    raise RunnerConfigurationError(
+        "No supported TA-14 evaluation endpoint was found."
+    )
 
 
 def example_from_schema(
@@ -342,19 +264,15 @@ def example_from_schema(
     openapi_document: dict[str, Any],
     depth: int = 0,
 ) -> Any:
-    """
-    Build a conservative request example from an OpenAPI schema.
-
-    Existing examples and defaults are preferred. Required object properties
-    are generated recursively.
-    """
-    if depth > 12:
+    if depth > 20:
         return None
 
-    if "$ref" in schema:
+    reference = schema.get("$ref")
+
+    if isinstance(reference, str):
         resolved = resolve_reference(
             openapi_document,
-            str(schema["$ref"]),
+            reference,
         )
         return example_from_schema(
             resolved,
@@ -373,41 +291,43 @@ def example_from_schema(
     if isinstance(enum_values, list) and enum_values:
         return copy.deepcopy(enum_values[0])
 
-    for combined_key in ("allOf", "oneOf", "anyOf"):
-        combined = schema.get(combined_key)
+    for combination_name in ("allOf", "oneOf", "anyOf"):
+        alternatives = schema.get(combination_name)
 
-        if isinstance(combined, list) and combined:
-            if combined_key == "allOf":
-                merged: dict[str, Any] = {}
+        if not isinstance(alternatives, list):
+            continue
 
-                for child_schema in combined:
-                    if not isinstance(child_schema, dict):
-                        continue
+        if combination_name == "allOf":
+            combined_object: dict[str, Any] = {}
 
-                    child_value = example_from_schema(
-                        child_schema,
-                        openapi_document,
-                        depth + 1,
-                    )
-
-                    if isinstance(child_value, dict):
-                        merged.update(child_value)
-
-                if merged:
-                    return merged
-
-            for child_schema in combined:
-                if not isinstance(child_schema, dict):
+            for alternative in alternatives:
+                if not isinstance(alternative, dict):
                     continue
 
-                value = example_from_schema(
-                    child_schema,
+                generated = example_from_schema(
+                    alternative,
                     openapi_document,
                     depth + 1,
                 )
 
-                if value is not None:
-                    return value
+                if isinstance(generated, dict):
+                    combined_object.update(generated)
+
+            if combined_object:
+                return combined_object
+
+        for alternative in alternatives:
+            if not isinstance(alternative, dict):
+                continue
+
+            generated = example_from_schema(
+                alternative,
+                openapi_document,
+                depth + 1,
+            )
+
+            if generated is not None:
+                return generated
 
     schema_type = schema.get("type")
 
@@ -423,59 +343,71 @@ def example_from_schema(
 
         result: dict[str, Any] = {}
 
-        for name, property_schema in properties.items():
+        for property_name, property_schema in properties.items():
             if not isinstance(property_schema, dict):
                 continue
 
             include_property = (
-                name in required
-                or "example" in property_schema
+                property_name in required
                 or "default" in property_schema
+                or "example" in property_schema
             )
 
             if not include_property:
                 continue
 
-            value = example_from_schema(
+            generated = example_from_schema(
                 property_schema,
                 openapi_document,
                 depth + 1,
             )
 
-            if value is not None:
-                result[name] = value
+            if generated is not None:
+                result[property_name] = generated
 
         return result
 
     if schema_type == "array":
         item_schema = schema.get("items", {})
 
-        if isinstance(item_schema, dict):
-            item = example_from_schema(
-                item_schema,
-                openapi_document,
-                depth + 1,
-            )
-            return [] if item is None else [item]
+        if not isinstance(item_schema, dict):
+            return []
 
-        return []
+        generated_item = example_from_schema(
+            item_schema,
+            openapi_document,
+            depth + 1,
+        )
+
+        if generated_item is None:
+            return []
+
+        return [generated_item]
 
     if schema_type == "boolean":
         return False
 
     if schema_type == "integer":
         minimum = schema.get("minimum")
-        return int(minimum) if isinstance(minimum, int) else 1
+
+        if isinstance(minimum, int):
+            return minimum
+
+        return 1
 
     if schema_type == "number":
         minimum = schema.get("minimum")
-        return float(minimum) if isinstance(
-            minimum,
-            (int, float),
-        ) else 1.0
+
+        if isinstance(minimum, (int, float)):
+            return float(minimum)
+
+        return 1.0
 
     if schema_type == "string":
         string_format = schema.get("format")
+
+        if string_format == "uuid":
+            return str(uuid.uuid4())
 
         if string_format == "date-time":
             return utc_now()
@@ -483,47 +415,56 @@ def example_from_schema(
         if string_format == "date":
             return datetime.now(timezone.utc).date().isoformat()
 
-        if string_format == "uuid":
-            return str(uuid.uuid4())
-
         if string_format == "email":
             return "synthetic-demo@ta14.invalid"
+
+        minimum_length = schema.get("minLength", 0)
+
+        if isinstance(minimum_length, int) and minimum_length > 10:
+            return (
+                "Synthetic demonstration value supplied for "
+                "controlled TA-14 evaluation."
+            )
 
         return "synthetic_demo"
 
     return None
 
 
-def request_example_from_operation(
+def request_body_from_operation(
     operation: dict[str, Any],
     openapi_document: dict[str, Any],
-) -> dict[str, Any] | None:
-    """Extract or generate a JSON request body from an OpenAPI operation."""
+) -> dict[str, Any]:
     request_body = operation.get("requestBody")
 
     if not isinstance(request_body, dict):
-        return None
+        raise RunnerConfigurationError(
+            "The evaluation endpoint has no JSON request body."
+        )
 
-    if "$ref" in request_body:
+    reference = request_body.get("$ref")
+
+    if isinstance(reference, str):
         request_body = resolve_reference(
             openapi_document,
-            str(request_body["$ref"]),
+            reference,
         )
 
     content = request_body.get("content", {})
 
     if not isinstance(content, dict):
-        return None
+        raise RunnerConfigurationError(
+            "The evaluation request body has no content definition."
+        )
 
-    media = (
-        content.get("application/json")
-        or content.get("application/*+json")
-    )
+    media = content.get("application/json")
 
     if not isinstance(media, dict):
-        return None
+        raise RunnerConfigurationError(
+            "The evaluation endpoint does not define application/json."
+        )
 
-    if "example" in media and isinstance(media["example"], dict):
+    if isinstance(media.get("example"), dict):
         return copy.deepcopy(media["example"])
 
     examples = media.get("examples")
@@ -541,111 +482,81 @@ def request_example_from_operation(
     schema = media.get("schema")
 
     if not isinstance(schema, dict):
-        return None
+        raise RunnerConfigurationError(
+            "The evaluation endpoint has no usable JSON schema."
+        )
 
     generated = example_from_schema(
         schema,
         openapi_document,
     )
 
-    return generated if isinstance(generated, dict) else None
-
-
-def load_repository_example() -> tuple[dict[str, Any] | None, str]:
-    """
-    Load the first usable repository example.
-
-    Unreadable, binary, or invalid example files are skipped.
-    """
-    skipped: list[str] = []
-
-    for path in EXAMPLE_FILES:
-        if not path.exists():
-            continue
-
-        try:
-            payload = load_json_file(path)
-
-        except RunnerConfigurationError as exc:
-            skipped.append(f"{path.name}: {exc}")
-            continue
-
-        if isinstance(payload, dict):
-            return payload, str(path.relative_to(ROOT_DIR))
-
-        skipped.append(
-            f"{path.name}: JSON root was not an object"
+    if not isinstance(generated, dict):
+        raise RunnerConfigurationError(
+            "Unable to generate an evaluation request from OpenAPI."
         )
 
-    if skipped:
-        print("Repository request examples skipped:")
-        for item in skipped:
-            print(f"  - {item}")
-
-    return None, "none"
+    return generated
 
 
-def status_for_field(
-    field_name: str,
-    scenario: dict[str, Any],
-) -> Any:
-    """Map an API field name to a scenario status."""
+def is_negative_field(field_name: str) -> bool:
     normalized = field_name.lower().replace("-", "_")
 
-    mappings = (
-        ("authority", "authority_status"),
-        ("evidence", "evidence_status"),
-        ("record", "evidence_status"),
-        ("continuity", "continuity_status"),
-        ("security", "security_status"),
-        ("human_approval", "human_approval"),
-        ("human_review", "human_approval"),
-        ("approval", "human_approval"),
+    negative_terms = (
+        "missing",
+        "absent",
+        "invalid",
+        "unsafe",
+        "conflict",
+        "revoked",
+        "expired",
+        "blocked",
+        "prohibited",
+        "stale",
+        "unresolved",
+        "unauthorized",
+        "gaps_identified",
+        "gap_identified",
+        "exception_active",
+        "risk_unresolved",
+        "harm_present",
     )
 
-    for token, scenario_key in mappings:
-        if token in normalized:
-            return scenario.get(scenario_key)
-
-    return None
+    return any(term in normalized for term in negative_terms)
 
 
-def status_to_boolean(value: Any, fallback: bool) -> bool:
-    """Convert a scenario status to a boolean when needed."""
-    if isinstance(value, bool):
-        return value
-
-    normalized = str(value).strip().lower()
-
-    if normalized in TRUE_WORDS:
-        return True
-
-    if normalized in FALSE_WORDS:
-        return False
-
-    return fallback
-
-
-def mutate_scalar(
+def allowed_string_value(
     field_name: str,
-    current_value: Any,
+    current_value: str,
     scenario: dict[str, Any],
-) -> Any:
-    """Apply scenario values to recognized request fields."""
+) -> str:
     normalized = field_name.lower().replace("-", "_")
-    status_value = status_for_field(normalized, scenario)
 
     if normalized in {
-        "scenario_id",
-        "case_id",
-        "request_id",
-        "evaluation_id",
-        "route_id",
-        "idempotency_key",
+        "risk_class",
+        "risk_level",
+        "consequence_level",
+        "impact_level",
+        "severity",
     }:
-        return (
-            f"{scenario['scenario_id']}-"
-            f"{uuid.uuid4().hex[:8].upper()}"
+        return "low"
+
+    if "authority_source" in normalized:
+        return "Verified accountable synthetic authority"
+
+    if "authority_scope" in normalized:
+        return "Bounded synthetic demonstration scope"
+
+    if "identity" in normalized or normalized in {
+        "system_name",
+        "actor_name",
+        "subject",
+    }:
+        return str(
+            scenario.get(
+                "system_identity",
+                "Bounded synthetic execution assistant",
+            )
         )
 
     if normalized in {
@@ -654,84 +565,118 @@ def mutate_scalar(
         "scenario_name",
         "case_name",
     }:
-        return str(scenario.get("name", current_value))
+        return str(scenario["name"])
 
     if normalized in {"industry", "sector", "domain"}:
-        return str(scenario.get("industry", current_value))
-
-    if normalized in {
-        "consequence_level",
-        "risk_level",
-        "impact_level",
-        "severity",
-    }:
         return str(
-            scenario.get("consequence_level", current_value)
-        )
-
-    if normalized in {
-        "system_identity",
-        "system_name",
-        "subject",
-        "system",
-    } and isinstance(current_value, str):
-        return str(
-            scenario.get("system_identity", current_value)
+            scenario.get(
+                "industry",
+                "governed_operations",
+            )
         )
 
     if normalized in {
         "description",
         "summary",
         "context",
-        "request_description",
-        "statement",
-    } and isinstance(current_value, str):
-        facts = scenario.get("facts", [])
-        fact_text = " ".join(str(item) for item in facts)
+        "claim",
+        "claim_or_function",
+        "consequence_question",
+        "proposed_action",
+        "action",
+        "purpose",
+        "reason",
+    }:
+        facts = " ".join(
+            str(item)
+            for item in scenario.get("facts", [])
+        )
 
         return (
             f"Synthetic demonstration scenario "
             f"{scenario['scenario_id']}: "
-            f"{scenario['name']}. {fact_text}"
-        ).strip()
+            f"{scenario['name']}. {facts}"
+        )
 
-    if status_value is not None:
-        if isinstance(current_value, bool):
-            return status_to_boolean(
-                status_value,
-                current_value,
-            )
+    positive_status_terms = (
+        "status",
+        "continuity",
+        "evidence",
+        "record",
+        "security",
+        "governance",
+        "legitimacy",
+        "binding",
+        "approval",
+        "verification",
+        "validation",
+        "custody",
+        "preservation",
+        "current",
+    )
 
-        if isinstance(current_value, str):
-            return str(status_value)
+    if any(term in normalized for term in positive_status_terms):
+        return "verified"
+
+    if current_value in {
+        "",
+        "synthetic_demo",
+    }:
+        return "Verified synthetic demonstration value"
 
     return current_value
 
 
-def apply_scenario(
+def apply_allow_profile(
     value: Any,
     scenario: dict[str, Any],
     parent_key: str = "",
 ) -> Any:
-    """Recursively apply scenario values to a request body."""
+    """
+    Convert the generated request into a fully supported bounded route.
+
+    Positive prerequisites are set true. Negative or failure-state flags
+    are set false. Text fields receive verified, current, and bounded values.
+    """
     if isinstance(value, dict):
-        updated: dict[str, Any] = {}
+        result: dict[str, Any] = {}
 
         for key, child_value in value.items():
-            if isinstance(child_value, (dict, list)):
-                updated[key] = apply_scenario(
-                    child_value,
-                    scenario,
-                    key,
-                )
-            else:
-                updated[key] = mutate_scalar(
-                    key,
-                    child_value,
-                    scenario,
-                )
+            normalized_key = key.lower().replace("-", "_")
 
-        return updated
+            if isinstance(child_value, (dict, list)):
+                result[key] = apply_allow_profile(
+                    child_value,
+                    scenario,
+                    key,
+                )
+                continue
+
+            if isinstance(child_value, bool):
+                result[key] = not is_negative_field(
+                    normalized_key
+                )
+                continue
+
+            if isinstance(child_value, str):
+                result[key] = allowed_string_value(
+                    normalized_key,
+                    child_value,
+                    scenario,
+                )
+                continue
+
+            if isinstance(child_value, int):
+                result[key] = max(child_value, 1)
+                continue
+
+            if isinstance(child_value, float):
+                result[key] = max(child_value, 1.0)
+                continue
+
+            result[key] = child_value
+
+        return result
 
     if isinstance(value, list):
         normalized_parent = (
@@ -741,7 +686,7 @@ def apply_scenario(
         if normalized_parent in {
             "facts",
             "observations",
-            "submitted_facts",
+            "materials_available",
             "evidence_items",
         }:
             return copy.deepcopy(
@@ -749,7 +694,154 @@ def apply_scenario(
             )
 
         return [
-            apply_scenario(item, scenario, parent_key)
+            apply_allow_profile(
+                item,
+                scenario,
+                parent_key,
+            )
+            for item in value
+        ]
+
+    return value
+
+
+def apply_general_scenario(
+    value: Any,
+    scenario: dict[str, Any],
+    parent_key: str = "",
+) -> Any:
+    if scenario.get("force_profile") == "allow":
+        return apply_allow_profile(
+            value,
+            scenario,
+            parent_key,
+        )
+
+    if isinstance(value, dict):
+        result: dict[str, Any] = {}
+
+        for key, child_value in value.items():
+            normalized = key.lower().replace("-", "_")
+
+            if isinstance(child_value, (dict, list)):
+                result[key] = apply_general_scenario(
+                    child_value,
+                    scenario,
+                    key,
+                )
+                continue
+
+            if isinstance(child_value, bool):
+                if "authority" in normalized:
+                    result[key] = (
+                        scenario.get("authority_status")
+                        == "verified"
+                    )
+                elif "evidence" in normalized:
+                    result[key] = (
+                        scenario.get("evidence_status")
+                        == "complete"
+                    )
+                elif "continuity" in normalized:
+                    result[key] = (
+                        scenario.get("continuity_status")
+                        == "current"
+                    )
+                elif "security" in normalized:
+                    result[key] = (
+                        scenario.get("security_status")
+                        == "verified"
+                    )
+                elif (
+                    "approval" in normalized
+                    or "human_review" in normalized
+                ):
+                    result[key] = bool(
+                        scenario.get("human_approval")
+                    )
+                else:
+                    result[key] = child_value
+
+                continue
+
+            if isinstance(child_value, str):
+                if normalized in {
+                    "name",
+                    "title",
+                    "scenario_name",
+                }:
+                    result[key] = str(scenario["name"])
+                elif normalized in {
+                    "industry",
+                    "sector",
+                    "domain",
+                }:
+                    result[key] = str(
+                        scenario.get(
+                            "industry",
+                            child_value,
+                        )
+                    )
+                elif normalized in {
+                    "risk_class",
+                    "risk_level",
+                    "consequence_level",
+                }:
+                    result[key] = str(
+                        scenario.get(
+                            "consequence_level",
+                            child_value,
+                        )
+                    )
+                elif normalized in {
+                    "description",
+                    "summary",
+                    "context",
+                    "claim_or_function",
+                    "consequence_question",
+                    "proposed_action",
+                }:
+                    result[key] = (
+                        f"Synthetic scenario "
+                        f"{scenario['scenario_id']}: "
+                        f"{scenario['name']}. "
+                        + " ".join(
+                            str(item)
+                            for item in scenario.get(
+                                "facts",
+                                [],
+                            )
+                        )
+                    )
+                else:
+                    result[key] = child_value
+
+                continue
+
+            result[key] = child_value
+
+        return result
+
+    if isinstance(value, list):
+        normalized_parent = (
+            parent_key.lower().replace("-", "_")
+        )
+
+        if normalized_parent in {
+            "facts",
+            "observations",
+            "evidence_items",
+        }:
+            return copy.deepcopy(
+                scenario.get("facts", value)
+            )
+
+        return [
+            apply_general_scenario(
+                item,
+                scenario,
+                parent_key,
+            )
             for item in value
         ]
 
@@ -757,10 +849,9 @@ def apply_scenario(
 
 
 def extract_route(response_body: Any) -> str | None:
-    """Find the final route in a nested response."""
     possible_keys = {
-        "route",
         "decision",
+        "route",
         "classification",
         "outcome",
         "result",
@@ -771,13 +862,13 @@ def extract_route(response_body: Any) -> str | None:
 
     if isinstance(response_body, dict):
         for key, value in response_body.items():
-            normalized_key = key.lower().replace("-", "_")
+            normalized = key.lower().replace("-", "_")
 
             if (
-                normalized_key in possible_keys
+                normalized in possible_keys
                 and isinstance(value, str)
             ):
-                candidate = value.strip().upper()
+                candidate = value.upper()
 
                 for route in FINAL_ROUTES:
                     if route in candidate:
@@ -799,31 +890,10 @@ def extract_route(response_body: Any) -> str | None:
     return None
 
 
-def create_response_preview(
-    response: requests.Response,
-) -> Any:
-    """Create a bounded response value for logs."""
-    try:
-        body = response.json()
-    except ValueError:
-        return response.text[:3000]
-
-    serialized = json.dumps(body, ensure_ascii=False)
-
-    if len(serialized) <= 7000:
-        return body
-
-    return {
-        "truncated": True,
-        "preview": serialized[:7000],
-    }
-
-
 def append_log(
     log_path: Path,
     record: dict[str, Any],
 ) -> None:
-    """Append one JSON Lines record."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     with log_path.open("a", encoding="utf-8") as file_handle:
@@ -838,30 +908,29 @@ def append_log(
 
 
 def build_headers(
+    scenario: dict[str, Any],
+    run_id: str,
     api_key: str | None,
     run_class: str,
     run_source: str,
-    scenario: dict[str, Any],
-    run_id: str,
 ) -> dict[str, str]:
-    """Create explicit synthetic classification headers."""
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "User-Agent": "TA14-Synthetic-Demo-Runner/2.0",
+        "User-Agent": "TA14-Synthetic-Demo-Runner/3.0",
         "X-TA14-Run-Class": run_class,
         "X-TA14-Run-Source": run_source,
+        "X-TA14-Synthetic": "true",
         "X-TA14-Scenario-ID": str(
             scenario["scenario_id"]
         ),
-        "X-TA14-Synthetic": "true",
+        "X-Request-ID": run_id,
         "X-Correlation-ID": run_id,
         "Idempotency-Key": run_id,
     }
 
     if api_key:
         headers["X-API-Key"] = api_key
-        headers["Authorization"] = f"Bearer {api_key}"
 
     return headers
 
@@ -879,29 +948,24 @@ def execute_scenario(
     batch_id: str,
     log_path: Path,
 ) -> bool:
-    """Execute and log one synthetic request."""
     run_id = str(uuid.uuid4())
+    request_url = f"{base_url}{endpoint_path}"
 
-    request_url = urljoin(
-        f"{base_url}/",
-        endpoint_path.lstrip("/"),
-    )
-
-    payload = apply_scenario(
+    payload = apply_general_scenario(
         copy.deepcopy(base_payload),
         scenario,
     )
 
     headers = build_headers(
+        scenario=scenario,
+        run_id=run_id,
         api_key=api_key,
         run_class=run_class,
         run_source=run_source,
-        scenario=scenario,
-        run_id=run_id,
     )
 
     started_at = utc_now()
-    monotonic_start = time.monotonic()
+    start_time = time.monotonic()
 
     try:
         response = session.post(
@@ -912,11 +976,15 @@ def execute_scenario(
         )
 
         elapsed_ms = round(
-            (time.monotonic() - monotonic_start) * 1000,
+            (time.monotonic() - start_time) * 1000,
             2,
         )
 
-        response_body = create_response_preview(response)
+        try:
+            response_body: Any = response.json()
+        except ValueError:
+            response_body = response.text[:5000]
+
         returned_route = extract_route(response_body)
 
         expected_route = (
@@ -926,59 +994,58 @@ def execute_scenario(
             or None
         )
 
-        append_log(
-            log_path,
-            {
-                "timestamp": started_at,
-                "batch_id": batch_id,
-                "run_id": run_id,
-                "run_class": run_class,
-                "run_source": run_source,
-                "synthetic": True,
-                "scenario_id": scenario["scenario_id"],
-                "scenario_name": scenario["name"],
-                "industry": scenario.get("industry"),
-                "consequence_level": scenario.get(
-                    "consequence_level"
-                ),
-                "endpoint": endpoint_path,
-                "http_status": response.status_code,
-                "elapsed_ms": elapsed_ms,
-                "request_accepted": response.ok,
-                "expected_route": expected_route,
-                "returned_route": returned_route,
-                "route_matches_expected": (
-                    returned_route == expected_route
-                    if returned_route and expected_route
-                    else None
-                ),
-                "response": response_body,
-            },
-        )
+        record = {
+            "timestamp": started_at,
+            "batch_id": batch_id,
+            "run_id": run_id,
+            "synthetic": True,
+            "run_class": run_class,
+            "run_source": run_source,
+            "scenario_id": scenario["scenario_id"],
+            "scenario_name": scenario["name"],
+            "endpoint": endpoint_path,
+            "http_status": response.status_code,
+            "elapsed_ms": elapsed_ms,
+            "request_accepted": response.ok,
+            "expected_route": expected_route,
+            "returned_route": returned_route,
+            "route_matches_expected": (
+                returned_route == expected_route
+                if returned_route and expected_route
+                else None
+            ),
+            "response": response_body,
+        }
 
-        status_text = (
-            "ACCEPTED" if response.ok else "REJECTED"
+        append_log(log_path, record)
+
+        status_label = (
+            "ACCEPTED"
+            if response.ok
+            else "REJECTED"
         )
 
         print(
-            f"[{status_text}] "
+            f"[{status_label}] "
             f"{scenario['scenario_id']} "
             f"HTTP {response.status_code} "
-            f"route={returned_route or 'UNKNOWN'} "
+            f"decision={returned_route or 'UNKNOWN'} "
             f"elapsed={elapsed_ms}ms"
         )
 
         if not response.ok:
             print(
-                "Response preview: "
-                f"{json.dumps(response_body, ensure_ascii=False)[:1200]}"
+                json.dumps(
+                    response_body,
+                    ensure_ascii=False,
+                )[:2000]
             )
 
         return response.ok
 
     except requests.RequestException as exc:
         elapsed_ms = round(
-            (time.monotonic() - monotonic_start) * 1000,
+            (time.monotonic() - start_time) * 1000,
             2,
         )
 
@@ -988,9 +1055,9 @@ def execute_scenario(
                 "timestamp": started_at,
                 "batch_id": batch_id,
                 "run_id": run_id,
+                "synthetic": True,
                 "run_class": run_class,
                 "run_source": run_source,
-                "synthetic": True,
                 "scenario_id": scenario["scenario_id"],
                 "scenario_name": scenario["name"],
                 "endpoint": endpoint_path,
@@ -1009,8 +1076,45 @@ def execute_scenario(
         return False
 
 
+def select_scenarios(
+    scenarios: list[dict[str, Any]],
+    run_count: int,
+    selected_scenario_id: str,
+) -> list[dict[str, Any]]:
+    if selected_scenario_id:
+        selected = next(
+            (
+                scenario
+                for scenario in scenarios
+                if scenario["scenario_id"]
+                == selected_scenario_id
+            ),
+            None,
+        )
+
+        if selected is None:
+            available = ", ".join(
+                scenario["scenario_id"]
+                for scenario in scenarios
+            )
+
+            raise RunnerConfigurationError(
+                f"Scenario ID {selected_scenario_id!r} "
+                f"was not found. Available IDs: {available}"
+            )
+
+        return [
+            copy.deepcopy(selected)
+            for _ in range(run_count)
+        ]
+
+    return random.sample(
+        scenarios,
+        k=min(run_count, len(scenarios)),
+    )
+
+
 def main() -> int:
-    """Run one controlled batch."""
     try:
         base_url = normalize_base_url(
             os.getenv(
@@ -1039,27 +1143,34 @@ def main() -> int:
             DEFAULT_DELAY_MAX_SECONDS,
         )
 
+        selected_scenario_id = os.getenv(
+            "TA14_SYNTHETIC_SCENARIO_ID",
+            "",
+        ).strip()
+
         if not 1 <= run_count <= MAX_BATCH_SIZE:
             raise RunnerConfigurationError(
-                "TA14_SYNTHETIC_RUN_COUNT must be between "
-                f"1 and {MAX_BATCH_SIZE}."
+                f"Run count must be between 1 and "
+                f"{MAX_BATCH_SIZE}."
             )
 
-        if not 5 <= timeout_seconds <= 180:
+        if delay_min_seconds < 0:
             raise RunnerConfigurationError(
-                "TA14_HTTP_TIMEOUT_SECONDS must be between "
-                "5 and 180."
+                "Minimum delay cannot be negative."
             )
 
-        if (
-            delay_min_seconds < 0
-            or delay_max_seconds < delay_min_seconds
-        ):
+        if delay_max_seconds < delay_min_seconds:
             raise RunnerConfigurationError(
-                "Synthetic request delay values are invalid."
+                "Maximum delay cannot be below minimum delay."
             )
 
         scenarios = load_scenarios()
+
+        selected_scenarios = select_scenarios(
+            scenarios=scenarios,
+            run_count=run_count,
+            selected_scenario_id=selected_scenario_id,
+        )
 
     except RunnerConfigurationError as exc:
         print(
@@ -1077,31 +1188,14 @@ def main() -> int:
             timeout_seconds=timeout_seconds,
         )
 
-        endpoint_path, operation = discover_endpoint(
+        endpoint_path, operation = find_evaluation_operation(
             openapi_document
         )
 
-        repository_example, example_source = (
-            load_repository_example()
+        base_payload = request_body_from_operation(
+            operation=operation,
+            openapi_document=openapi_document,
         )
-
-        if repository_example is not None:
-            base_payload = repository_example
-        else:
-            generated_example = request_example_from_operation(
-                operation,
-                openapi_document,
-            )
-
-            if generated_example is None:
-                raise RunnerConfigurationError(
-                    "No valid repository request example was found, "
-                    "and a JSON request body could not be generated "
-                    "from the OpenAPI operation."
-                )
-
-            base_payload = generated_example
-            example_source = "generated from OpenAPI"
 
     except RunnerConfigurationError as exc:
         print(
@@ -1109,14 +1203,6 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-
-    batch_id = (
-        "SYN-BATCH-"
-        f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-"
-        f"{uuid.uuid4().hex[:8].upper()}"
-    )
-
-    log_path = LOG_DIR / f"{batch_id}.jsonl"
 
     run_class = (
         os.getenv(
@@ -1134,27 +1220,31 @@ def main() -> int:
         or "github_actions_scheduled_runner"
     )
 
-    api_key = os.getenv("TA14_SYNTHETIC_API_KEY")
+    api_key = os.getenv(
+        "TA14_SYNTHETIC_API_KEY",
+        "",
+    ).strip() or None
 
-    if api_key:
-        api_key = api_key.strip() or None
-
-    selected_scenarios = random.sample(
-        scenarios,
-        k=min(run_count, len(scenarios)),
+    batch_id = (
+        "SYN-BATCH-"
+        f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-"
+        f"{uuid.uuid4().hex[:8].upper()}"
     )
+
+    log_path = LOG_DIR / f"{batch_id}.jsonl"
 
     print("TA-14 controlled synthetic sandbox activity")
     print(f"Batch ID: {batch_id}")
-    print(f"Run class: {run_class}")
-    print(f"Run source: {run_source}")
     print(f"Base URL: {base_url}")
     print(f"Endpoint: {endpoint_path}")
-    print(f"Request contract source: {example_source}")
-    print(f"Scenario count: {len(selected_scenarios)}")
+    print(f"Run count: {len(selected_scenarios)}")
+    print(
+        "Scenario selection: "
+        f"{selected_scenario_id or 'random'}"
+    )
     print(
         "Classification: synthetic demonstration activity; "
-        "not customer, adoption, or production activity."
+        "not customer or production activity."
     )
 
     accepted_count = 0
@@ -1166,7 +1256,7 @@ def main() -> int:
         print()
         print(
             f"Run {index}/{len(selected_scenarios)}: "
-            f"{scenario['scenario_id']} - "
+            f"{scenario['scenario_id']} — "
             f"{scenario['name']}"
         )
 
@@ -1195,7 +1285,7 @@ def main() -> int:
 
             print(
                 f"Waiting {delay_seconds} seconds "
-                "before the next synthetic request."
+                "before the next request."
             )
 
             time.sleep(delay_seconds)
@@ -1206,16 +1296,19 @@ def main() -> int:
             "timestamp": utc_now(),
             "record_type": "batch_summary",
             "batch_id": batch_id,
+            "synthetic": True,
             "run_class": run_class,
             "run_source": run_source,
-            "synthetic": True,
+            "selected_scenario_id": (
+                selected_scenario_id or None
+            ),
             "requested_runs": len(selected_scenarios),
             "accepted_requests": accepted_count,
             "rejected_or_failed_requests": (
-                len(selected_scenarios) - accepted_count
+                len(selected_scenarios)
+                - accepted_count
             ),
             "endpoint": endpoint_path,
-            "request_contract_source": example_source,
         },
     )
 
@@ -1225,12 +1318,7 @@ def main() -> int:
         f"Accepted requests: "
         f"{accepted_count}/{len(selected_scenarios)}"
     )
-    print(
-        "All requests were labeled synthetic demonstration activity."
-    )
 
-    # A rejected scenario remains a useful recorded sandbox result.
-    # The workflow fails only for runner configuration failures.
     return 0
 
 
