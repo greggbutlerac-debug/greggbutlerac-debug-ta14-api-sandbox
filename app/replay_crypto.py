@@ -59,6 +59,7 @@ DEFAULT_HASH_ALGORITHM = HashAlgorithm.SHA256
 # not participate in the digest of the record they attest to.
 DEFAULT_EXCLUDED_FIELDS: Set[str] = {
     "signature",
+    "seal_signature",
     "verification_status",
     "verification_message",
 }
@@ -198,6 +199,7 @@ def to_canonical_value(
     excluded_fields: Optional[Iterable[str]] = None,
     exclude_none: bool = False,
     exclude_digest_fields: bool = False,
+    use_default_exclusions: bool = False,
 ) -> Any:
     """
     Convert a supported Python value into canonical JSON-compatible data.
@@ -219,7 +221,11 @@ def to_canonical_value(
     - standard JSON primitives.
     """
 
-    exclusions = set(DEFAULT_EXCLUDED_FIELDS)
+    exclusions = (
+        set(DEFAULT_EXCLUDED_FIELDS)
+        if use_default_exclusions
+        else set()
+    )
 
     if excluded_fields is not None:
         exclusions.update(excluded_fields)
@@ -236,6 +242,7 @@ def to_canonical_value(
             excluded_fields=exclusions,
             exclude_none=exclude_none,
             exclude_digest_fields=exclude_digest_fields,
+            use_default_exclusions=use_default_exclusions,
         )
 
     if is_dataclass(value) and not isinstance(value, type):
@@ -244,6 +251,7 @@ def to_canonical_value(
             excluded_fields=exclusions,
             exclude_none=exclude_none,
             exclude_digest_fields=exclude_digest_fields,
+            use_default_exclusions=use_default_exclusions,
         )
 
     if isinstance(value, Enum):
@@ -252,6 +260,7 @@ def to_canonical_value(
             excluded_fields=exclusions,
             exclude_none=exclude_none,
             exclude_digest_fields=exclude_digest_fields,
+            use_default_exclusions=use_default_exclusions,
         )
 
     if isinstance(value, UUID):
@@ -352,6 +361,7 @@ def canonical_json_bytes(
     excluded_fields: Optional[Iterable[str]] = None,
     exclude_none: bool = False,
     exclude_digest_fields: bool = False,
+    use_default_exclusions: bool = False,
 ) -> bytes:
     """
     Serialize a value into deterministic UTF-8 JSON bytes.
@@ -365,7 +375,8 @@ def canonical_json_bytes(
     - NaN and infinity prohibited;
     - timezone-aware datetimes normalized to UTC;
     - UUID values lowercase;
-    - signature fields excluded by default;
+    - signature fields preserved for ordinary document serialization;
+    - cryptographic callers may enable the standard signature exclusions;
     - digest fields optionally excluded.
     """
 
@@ -374,6 +385,7 @@ def canonical_json_bytes(
         excluded_fields=excluded_fields,
         exclude_none=exclude_none,
         exclude_digest_fields=exclude_digest_fields,
+        use_default_exclusions=use_default_exclusions,
     )
 
     try:
@@ -398,6 +410,7 @@ def canonical_json_text(
     excluded_fields: Optional[Iterable[str]] = None,
     exclude_none: bool = False,
     exclude_digest_fields: bool = False,
+    use_default_exclusions: bool = False,
 ) -> str:
     """Return canonical JSON as text."""
 
@@ -406,6 +419,7 @@ def canonical_json_text(
         excluded_fields=excluded_fields,
         exclude_none=exclude_none,
         exclude_digest_fields=exclude_digest_fields,
+        use_default_exclusions=use_default_exclusions,
     ).decode("utf-8")
 
 
@@ -479,6 +493,7 @@ def digest_object(
         excluded_fields=excluded_fields,
         exclude_none=exclude_none,
         exclude_digest_fields=exclude_digest_fields,
+        use_default_exclusions=True,
     )
 
     return digest_bytes(
@@ -838,7 +853,11 @@ def write_canonical_json(
     create_parents: bool = True,
 ) -> Path:
     """
-    Write a canonical JSON document atomically.
+    Write a complete canonical JSON document atomically.
+
+    Completed documents preserve attached signature and seal-signature records.
+    Cryptographic digest operations use digest_object(), which applies the
+    standard signature exclusions separately.
 
     A temporary sibling file is written first and then moved into place. This
     reduces the chance of preserving a partially written replay record.
