@@ -22,7 +22,7 @@ The verifier checks:
 - commit digest and signature;
 - execution digest and signature;
 - outcome digest and signature;
-- ruleset correspondence;
+- ruleset identity, version, and artifact-digest correspondence;
 - action binding;
 - determination-to-binding correspondence;
 - binding-to-commit correspondence;
@@ -69,6 +69,7 @@ from .replay_models import (
     BindingReceipt,
     CommitReceipt,
     DeterminationReceipt,
+    DigestRecord,
     EvidenceIndex,
     ExecutionReceipt,
     IndependentVerificationReport,
@@ -82,7 +83,6 @@ from .replay_models import (
     VerificationCheck,
     VerificationStatus,
 )
-from .replay_package import ReplayPackageError
 from .replay_signing import (
     KeyLoadingError,
     load_public_key_pem,
@@ -101,13 +101,6 @@ REQUIRED_PACKAGE_FILES = {
     "public-verification-key.json",
     "package-manifest.json",
     "README.txt",
-}
-
-OPTIONAL_ROUTE_FILES = {
-    "binding.json",
-    "commit.json",
-    "execution.json",
-    "outcome.json",
 }
 
 
@@ -356,7 +349,7 @@ def _verify_stored_digest(
     stored_digest: Any,
     related_object_ids: Sequence[str] = (),
 ) -> IntegrityStatus:
-    """Verify one model's stored canonical digest."""
+    """Verify one model's stored canonical self-digest."""
 
     if stored_digest is None:
         collector.failed(
@@ -757,7 +750,7 @@ def _verify_dependency_correspondence(
     IntegrityStatus,
 ]:
     """
-    Verify binding, commit, execution, and outcome dependency correspondence.
+    Verify ruleset, binding, commit, execution, and outcome correspondence.
     """
 
     ruleset_integrity = IntegrityStatus.VALID
@@ -780,7 +773,7 @@ def _verify_dependency_correspondence(
             check_id="ruleset-correspondence",
             name="Ruleset correspondence",
             message=(
-                "Ruleset identity, version, and digest match "
+                "Ruleset identity, version, and artifact digest match "
                 "the route manifest."
             ),
         )
@@ -789,7 +782,7 @@ def _verify_dependency_correspondence(
             check_id="ruleset-correspondence",
             name="Ruleset correspondence",
             message=(
-                "Ruleset identity, version, or digest does not "
+                "Ruleset identity, version, or artifact digest does not "
                 "match the route manifest."
             ),
         )
@@ -1023,6 +1016,7 @@ def _verify_dependency_correspondence(
                         "Single-use commit was not marked consumed."
                     ),
                 )
+
                 if commit_integrity == IntegrityStatus.VALID:
                     commit_integrity = IntegrityStatus.UNVERIFIED
 
@@ -1491,15 +1485,13 @@ def verify_replay_package(
             "public_key_fingerprint"
         )
 
-        declared_fingerprint = None
+        declared_fingerprint: Optional[DigestRecord] = None
 
         if isinstance(
             declared_fingerprint_data,
             dict,
         ):
             try:
-                from .replay_models import DigestRecord
-
                 declared_fingerprint = (
                     DigestRecord.model_validate(
                         declared_fingerprint_data
@@ -1581,13 +1573,33 @@ def verify_replay_package(
             stored_digest=evidence_index.index_digest,
         )
 
-        ruleset_digest_status = _verify_stored_digest(
-            collector=collector,
-            check_id="ruleset-digest",
-            name="Ruleset",
-            value=ruleset,
-            stored_digest=ruleset.ruleset_digest,
-        )
+        if ruleset.ruleset_digest is not None:
+            collector.verified(
+                check_id="ruleset-digest-present",
+                name="Ruleset digest",
+                message=(
+                    "Ruleset contains a preserved artifact digest. "
+                    "Its correspondence to the route manifest is "
+                    "verified separately."
+                ),
+                related_object_ids=[
+                    ruleset.ruleset_id
+                ],
+            )
+            ruleset_digest_status = IntegrityStatus.VALID
+        else:
+            collector.failed(
+                check_id="ruleset-digest-present",
+                name="Ruleset digest",
+                message=(
+                    "Ruleset does not contain its required "
+                    "artifact digest."
+                ),
+                related_object_ids=[
+                    ruleset.ruleset_id
+                ],
+            )
+            ruleset_digest_status = IntegrityStatus.INVALID
 
         determination_digest_status = _verify_stored_digest(
             collector=collector,
@@ -1713,9 +1725,14 @@ def verify_replay_package(
                 ],
             )
 
-        if verify_ledger_chain(
-            ledger.events
-        ) and verify_ledger_record(ledger):
+        if (
+            verify_ledger_chain(
+                ledger.events
+            )
+            and verify_ledger_record(
+                ledger
+            )
+        ):
             collector.verified(
                 check_id="ledger-integrity",
                 name="Ledger integrity",
@@ -1748,8 +1765,10 @@ def verify_replay_package(
         )
 
         if (
-            ledger_integrity == IntegrityStatus.VALID
-            and ledger_seal_status != IntegrityStatus.VALID
+            ledger_integrity
+            == IntegrityStatus.VALID
+            and ledger_seal_status
+            != IntegrityStatus.VALID
         ):
             ledger_integrity = IntegrityStatus.INVALID
 
