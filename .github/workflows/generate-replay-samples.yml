@@ -20,19 +20,46 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: python -m pip install -r requirements.txt
 
-      - name: Generate replay samples
-        run: python -m examples.generate_replay_samples --overwrite
+      - name: Show imported generator location
+        run: |
+          python - <<'PY'
+          import examples.generate_replay_samples as generator
+
+          print("Imported generator file:")
+          print(generator.__file__)
+          PY
+
+      - name: Generate replay samples with uncaught traceback
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          from examples.generate_replay_samples import generate_samples
+
+          generated = generate_samples(
+              Path("samples"),
+              overwrite=True,
+          )
+
+          print("Generated files:")
+
+          for path in generated:
+              print(f"- {path}")
+          PY
 
       - name: Commit generated samples
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add samples/
+
           if git diff --cached --quiet; then
             echo "No generated sample changes to commit."
             exit 0
           fi
+
           git commit -m "Generate public replay sample packages"
           git push
