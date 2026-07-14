@@ -29,6 +29,7 @@ from .engine import (
     make_meta,
 )
 from .rate_limit import ApiIdentity, ApiKeyRegistry, SandboxRateLimiter, make_usage_store
+from .replay_api import router as replay_router
 from .models import (
     AuthorityCheckRequest,
     ChainSpecResponse,
@@ -185,6 +186,8 @@ app = FastAPI(
     },
 )
 
+app.include_router(replay_router)
+
 allow_origins = [origin.strip() for origin in CORS_ALLOW_ORIGINS.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
@@ -269,15 +272,39 @@ async def sandbox_middleware(request: Request, call_next: Callable):
     request_id = request.headers.get("x-request-id") or str(uuid4())
 
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > MAX_BODY_BYTES:
-        return JSONResponse(
-            status_code=413,
-            content={
-                "meta": make_meta(request_id).model_dump(),
-                "error": "Request body too large.",
-                "max_body_bytes": MAX_BODY_BYTES,
-            },
+
+    request_body_limit = (
+        int(
+            os.getenv(
+                "TA14_MAX_REPLAY_PACKAGE_BYTES",
+                str(25 * 1024 * 1024),
+            )
         )
+        if request.url.path == "/v1/replay/verify"
+        else MAX_BODY_BYTES
+    )
+
+    if content_length:
+        try:
+            declared_body_bytes = int(content_length)
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "meta": make_meta(request_id).model_dump(),
+                    "error": "Invalid Content-Length header.",
+                },
+            )
+
+        if declared_body_bytes > request_body_limit:
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "meta": make_meta(request_id).model_dump(),
+                    "error": "Request body too large.",
+                    "max_body_bytes": request_body_limit,
+                },
+            )
 
     rate_result = None
     try:
