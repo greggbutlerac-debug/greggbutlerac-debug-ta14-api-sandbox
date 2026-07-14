@@ -35,9 +35,10 @@ from pathlib import Path
 from typing import Any
 
 from app.replay_crypto import canonical_json_bytes
-from app.replay_models import (
-    IntegrityStatus,
-    VerificationStatus,
+from app.replay_models import IntegrityStatus, VerificationStatus
+from app.replay_signing import (
+    generate_key_pair,
+    public_verification_bundle,
 )
 from app.replay_verify import (
     ReplayVerificationError,
@@ -61,10 +62,7 @@ def read_zip_json(
 ) -> dict[str, Any]:
     """Read one JSON document from a replay ZIP package."""
 
-    with zipfile.ZipFile(
-        package_path,
-        mode="r",
-    ) as archive:
+    with zipfile.ZipFile(package_path, mode="r") as archive:
         try:
             raw_document = archive.read(member_name)
         except KeyError as exc:
@@ -73,9 +71,7 @@ def read_zip_json(
             ) from exc
 
     try:
-        parsed = json.loads(
-            raw_document.decode("utf-8")
-        )
+        parsed = json.loads(raw_document.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError(
             f"Replay package member {member_name!r} is not valid JSON."
@@ -95,17 +91,9 @@ def rewrite_zip_member(
     member_name: str,
     replacement: bytes,
 ) -> None:
-    """
-    Copy a replay ZIP while replacing one archive member.
+    """Copy a replay ZIP while replacing one archive member."""
 
-    Archive members remain sorted and use ZIP_STORED so the demonstration
-    packages remain simple and predictable.
-    """
-
-    with zipfile.ZipFile(
-        source_path,
-        mode="r",
-    ) as source_archive:
+    with zipfile.ZipFile(source_path, mode="r") as source_archive:
         members = {
             name: source_archive.read(name)
             for name in source_archive.namelist()
@@ -114,10 +102,7 @@ def rewrite_zip_member(
 
     members[member_name] = replacement
 
-    output_path.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with zipfile.ZipFile(
         output_path,
@@ -125,10 +110,7 @@ def rewrite_zip_member(
         compression=zipfile.ZIP_STORED,
     ) as output_archive:
         for name in sorted(members):
-            output_archive.writestr(
-                name,
-                members[name],
-            )
+            output_archive.writestr(name, members[name])
 
 
 def create_valid_package(
@@ -142,16 +124,8 @@ def create_valid_package(
         filename=VALID_PACKAGE_NAME,
     )
 
-    output_path = (
-        output_directory
-        / VALID_PACKAGE_NAME
-    )
-
-    shutil.copyfile(
-        generated_path,
-        output_path,
-    )
-
+    output_path = output_directory / VALID_PACKAGE_NAME
+    shutil.copyfile(generated_path, output_path)
     return output_path
 
 
@@ -159,24 +133,14 @@ def create_tampered_package(
     valid_package: Path,
     output_directory: Path,
 ) -> Path:
-    """
-    Create a package whose route manifest was altered after signing.
-
-    The alteration leaves the original package manifest and signatures in
-    place, allowing the verifier to detect that the preserved route file no
-    longer matches the declared package integrity record.
-    """
+    """Create a package whose route manifest was altered after signing."""
 
     route_manifest = read_zip_json(
         valid_package,
         "route-manifest.json",
     )
 
-    metadata = route_manifest.setdefault(
-        "metadata",
-        {},
-    )
-
+    metadata = route_manifest.setdefault("metadata", {})
     metadata["public_demo_tamper"] = {
         "altered_after_signing": True,
         "description": (
@@ -185,18 +149,13 @@ def create_tampered_package(
         ),
     }
 
-    output_path = (
-        output_directory
-        / TAMPERED_PACKAGE_NAME
-    )
+    output_path = output_directory / TAMPERED_PACKAGE_NAME
 
     rewrite_zip_member(
         valid_package,
         output_path,
         "route-manifest.json",
-        canonical_json_bytes(
-            route_manifest
-        ),
+        canonical_json_bytes(route_manifest),
     )
 
     return output_path
@@ -206,13 +165,7 @@ def create_broken_ledger_package(
     valid_package: Path,
     output_directory: Path,
 ) -> Path:
-    """
-    Create a package with an intentionally altered hash-linked ledger event.
-
-    Changing the actor without recalculating the event digest, successor
-    references, ledger seal, signatures, or package manifest must cause
-    independent ledger verification to fail.
-    """
+    """Create a package with an intentionally altered ledger event."""
 
     ledger = read_zip_json(
         valid_package,
@@ -237,18 +190,13 @@ def create_broken_ledger_package(
         "intentional-public-demo-ledger-tamper"
     )
 
-    output_path = (
-        output_directory
-        / BROKEN_LEDGER_PACKAGE_NAME
-    )
+    output_path = output_directory / BROKEN_LEDGER_PACKAGE_NAME
 
     rewrite_zip_member(
         valid_package,
         output_path,
         "ledger.json",
-        canonical_json_bytes(
-            ledger
-        ),
+        canonical_json_bytes(ledger),
     )
 
     return output_path
@@ -259,39 +207,28 @@ def create_wrong_signature_package(
     output_directory: Path,
 ) -> Path:
     """
-    Create a package with an intentionally invalid package signature.
+    Create a package whose included public verification key was substituted.
 
-    The signed package-manifest content remains otherwise unchanged.
+    The preserved route records and signatures remain unchanged, but the
+    verifier is given an unrelated public key. This must invalidate public-key
+    correspondence and signature integrity.
     """
 
-    package_manifest = read_zip_json(
-        valid_package,
-        "package-manifest.json",
+    wrong_key_pair = generate_key_pair()
+
+    wrong_bundle = public_verification_bundle(
+        wrong_key_pair.public_key,
+        signer="Intentional Public Demo Substitute Signer",
+        key_id=wrong_key_pair.key_id,
     )
 
-    signature = package_manifest.get(
-        "signature"
-    )
-
-    if not isinstance(signature, dict):
-        raise RuntimeError(
-            "The package manifest does not contain a signature object."
-        )
-
-    signature["signature_base64"] = "A" * 88
-
-    output_path = (
-        output_directory
-        / WRONG_SIGNATURE_PACKAGE_NAME
-    )
+    output_path = output_directory / WRONG_SIGNATURE_PACKAGE_NAME
 
     rewrite_zip_member(
         valid_package,
         output_path,
-        "package-manifest.json",
-        canonical_json_bytes(
-            package_manifest
-        ),
+        "public-verification-key.json",
+        canonical_json_bytes(wrong_bundle),
     )
 
     return output_path
@@ -304,16 +241,11 @@ def verify_valid_sample(
 
     report = verify_replay_package(
         package_path,
-        verifier_name=(
-            "TA-14 Public Sample Generator"
-        ),
+        verifier_name="TA-14 Public Sample Generator",
         verifier_version="1.0.0",
     )
 
-    if (
-        report.overall_status
-        != VerificationStatus.VERIFIED
-    ):
+    if report.overall_status != VerificationStatus.VERIFIED:
         raise RuntimeError(
             "The generated valid sample did not return VERIFIED."
         )
@@ -331,12 +263,8 @@ def verify_valid_sample(
         "ruleset_integrity": report.ruleset_integrity,
         "action_binding": report.action_binding,
         "commit_integrity": report.commit_integrity,
-        "execution_correspondence": (
-            report.execution_correspondence
-        ),
-        "outcome_correspondence": (
-            report.outcome_correspondence
-        ),
+        "execution_correspondence": report.execution_correspondence,
+        "outcome_correspondence": report.outcome_correspondence,
     }
 
     invalid_states = [
@@ -363,16 +291,12 @@ def verify_intentionally_failed_sample(
     *,
     expected_invalid_field: str,
 ) -> None:
-    """
-    Require an intentionally altered package to fail for the intended reason.
-    """
+    """Require an intentionally altered package to fail as intended."""
 
     try:
         report = verify_replay_package(
             package_path,
-            verifier_name=(
-                "TA-14 Public Sample Generator"
-            ),
+            verifier_name="TA-14 Public Sample Generator",
             verifier_version="1.0.0",
         )
     except ReplayVerificationError as exc:
@@ -380,10 +304,7 @@ def verify_intentionally_failed_sample(
             f"Sample {package_path.name} could not be processed: {exc}"
         ) from exc
 
-    if (
-        report.overall_status
-        != VerificationStatus.FAILED
-    ):
+    if report.overall_status != VerificationStatus.FAILED:
         raise RuntimeError(
             f"Sample {package_path.name} did not return FAILED."
         )
@@ -394,11 +315,7 @@ def verify_intentionally_failed_sample(
             "independently replayable."
         )
 
-    state = getattr(
-        report,
-        expected_invalid_field,
-        None,
-    )
+    state = getattr(report, expected_invalid_field, None)
 
     if state != IntegrityStatus.INVALID:
         raise RuntimeError(
@@ -412,10 +329,7 @@ def write_sample_readme(
 ) -> Path:
     """Write a plain-language description beside the generated ZIP files."""
 
-    readme_path = (
-        output_directory
-        / "README.md"
-    )
+    readme_path = output_directory / "README.md"
 
     readme_path.write_text(
         """# TA-14 Independent Route Replay Samples
@@ -446,8 +360,9 @@ verification.
 
 ### `ta14-wrong-signature.zip`
 
-The package-manifest signature was replaced with an invalid value. It should
-fail signature verification.
+The included public verification key was replaced with an unrelated key while
+the original signatures remained unchanged. It should fail signature-integrity
+verification.
 
 ## Boundary
 
@@ -486,27 +401,19 @@ def generate_samples(
     ]
 
     if existing_paths and not overwrite:
-        names = ", ".join(
-            path.name
-            for path in existing_paths
-        )
+        names = ", ".join(path.name for path in existing_paths)
 
         raise FileExistsError(
             "Refusing to overwrite existing sample files: "
             f"{names}. Run with --overwrite to replace them."
         )
 
-    output_directory.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    output_directory.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(
         prefix="ta14-public-replay-samples-"
     ) as temporary_directory:
-        working_directory = Path(
-            temporary_directory
-        )
+        working_directory = Path(temporary_directory)
 
         valid_package = create_valid_package(
             working_directory,
@@ -518,48 +425,34 @@ def generate_samples(
             output_directory,
         )
 
-        broken_ledger_package = (
-            create_broken_ledger_package(
-                valid_package,
-                output_directory,
-            )
+        broken_ledger_package = create_broken_ledger_package(
+            valid_package,
+            output_directory,
         )
 
-        wrong_signature_package = (
-            create_wrong_signature_package(
-                valid_package,
-                output_directory,
-            )
+        wrong_signature_package = create_wrong_signature_package(
+            valid_package,
+            output_directory,
         )
 
-    verify_valid_sample(
-        valid_package
-    )
+    verify_valid_sample(valid_package)
 
     verify_intentionally_failed_sample(
         tampered_package,
-        expected_invalid_field=(
-            "package_integrity"
-        ),
+        expected_invalid_field="package_integrity",
     )
 
     verify_intentionally_failed_sample(
         broken_ledger_package,
-        expected_invalid_field=(
-            "ledger_integrity"
-        ),
+        expected_invalid_field="ledger_integrity",
     )
 
     verify_intentionally_failed_sample(
         wrong_signature_package,
-        expected_invalid_field=(
-            "signature_integrity"
-        ),
+        expected_invalid_field="signature_integrity",
     )
 
-    readme_path = write_sample_readme(
-        output_directory
-    )
+    readme_path = write_sample_readme(output_directory)
 
     return [
         valid_package,
@@ -592,9 +485,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help=(
-            "Replace existing generated sample files."
-        ),
+        help="Replace existing generated sample files.",
     )
 
     return parser.parse_args()
@@ -621,7 +512,6 @@ def main() -> int:
             f"Sample generation failed: {exc}",
             file=sys.stderr,
         )
-
         return 1
 
     print(
@@ -629,9 +519,7 @@ def main() -> int:
     )
 
     for generated_path in generated_paths:
-        print(
-            f"- {generated_path}"
-        )
+        print(f"- {generated_path}")
 
     return 0
 
