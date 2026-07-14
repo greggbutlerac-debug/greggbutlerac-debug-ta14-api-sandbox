@@ -187,7 +187,7 @@ def create_broken_ledger_package(
         )
 
     first_event["actor"] = (
-        "intentional-public-demo-ledger-tamper"
+        "unauthorized-ledger-actor"
     )
 
     output_path = output_directory / BROKEN_LEDGER_PACKAGE_NAME
