@@ -165,7 +165,14 @@ def create_broken_ledger_package(
     valid_package: Path,
     output_directory: Path,
 ) -> Path:
-    """Create a package with an intentionally altered ledger event."""
+    """
+    Create a schema-valid package with a broken ledger event digest.
+
+    The first event remains structurally valid, but its preserved event digest
+    is replaced without rebuilding the successor links, ledger seal,
+    signatures, or package manifest. Independent ledger verification must
+    therefore return INVALID.
+    """
 
     ledger = read_zip_json(
         valid_package,
@@ -186,9 +193,27 @@ def create_broken_ledger_package(
             "The first replay ledger event is not a JSON object."
         )
 
-    first_event["actor"] = (
-        "unauthorized-ledger-actor"
+    event_digest = first_event.get("event_digest")
+
+    if not isinstance(event_digest, dict):
+        raise RuntimeError(
+            "The first replay ledger event does not contain an event digest."
+        )
+
+    digest_value = event_digest.get("value")
+
+    if not isinstance(digest_value, str) or len(digest_value) != 64:
+        raise RuntimeError(
+            "The first replay ledger event digest is not a 64-character value."
+        )
+
+    replacement_value = (
+        "f" * 64
+        if digest_value != "f" * 64
+        else "e" * 64
     )
+
+    event_digest["value"] = replacement_value
 
     output_path = output_directory / BROKEN_LEDGER_PACKAGE_NAME
 
