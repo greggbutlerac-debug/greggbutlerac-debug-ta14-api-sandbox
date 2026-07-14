@@ -674,9 +674,9 @@ def sign_object(
     """
     Canonicalize, digest, and sign a replay-standard object.
 
-    Signature and verification fields are excluded by the canonicalization
-    layer, allowing a SignatureRecord to be attached after signing without
-    invalidating the signed object.
+    Signature, seal-signature, and verification-result fields are excluded
+    explicitly during signing. This allows a SignatureRecord to be attached
+    after signing without changing the canonical content that was attested.
     """
 
     normalized_signer = _require_nonempty_text(
@@ -687,6 +687,7 @@ def sign_object(
     canonical_content = canonical_json_bytes(
         value,
         exclude_digest_fields=False,
+        use_default_exclusions=True,
     )
 
     signed_digest = digest_bytes(
@@ -726,6 +727,9 @@ def verify_object_signature(
 ) -> VerificationResult:
     """
     Independently verify an object's digest, key fingerprint, and signature.
+
+    Verification uses the same unsigned canonical representation used by
+    sign_object(), including the standard signature-field exclusions.
     """
 
     if (
@@ -764,6 +768,7 @@ def verify_object_signature(
     canonical_content = canonical_json_bytes(
         value,
         exclude_digest_fields=False,
+        use_default_exclusions=True,
     )
 
     observed_digest = digest_bytes(
