@@ -59,7 +59,6 @@ DEFAULT_HASH_ALGORITHM = HashAlgorithm.SHA256
 # not participate in the digest of the record they attest to.
 DEFAULT_EXCLUDED_FIELDS: Set[str] = {
     "signature",
-    "signature_base64",
     "verification_status",
     "verification_message",
 }
