@@ -22,16 +22,160 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Show imported generator location
+      - name: Show imported file locations
         run: |
           python - <<'PY'
-          import examples.generate_replay_samples as generator
+          import app.replay_crypto
+          import app.replay_verify
+          import examples.generate_replay_samples
 
-          print("Imported generator file:")
-          print(generator.__file__)
+          print("replay_crypto:")
+          print(app.replay_crypto.__file__)
+
+          print("replay_verify:")
+          print(app.replay_verify.__file__)
+
+          print("sample generator:")
+          print(examples.generate_replay_samples.__file__)
           PY
 
-      - name: Generate replay samples with uncaught traceback
+      - name: Diagnose valid replay package
+        run: |
+          python - <<'PY'
+          import json
+          import tempfile
+          import zipfile
+          from pathlib import Path
+
+          from app.replay_verify import verify_replay_package
+          from tests.test_replay_verify import build_complete_package
+
+          with tempfile.TemporaryDirectory(
+              prefix="ta14-valid-package-diagnostic-"
+          ) as temporary_directory:
+              directory = Path(temporary_directory)
+
+              package_path, _record, _key_pair = build_complete_package(
+                  directory,
+                  filename="diagnostic-valid-package.zip",
+              )
+
+              print()
+              print("Generated package:")
+              print(package_path)
+              print()
+
+              with zipfile.ZipFile(package_path, "r") as archive:
+                  print("Archive members:")
+
+                  for name in sorted(archive.namelist()):
+                      print(f"- {name}")
+
+                  print()
+                  print("package-manifest.json:")
+                  print(
+                      archive.read(
+                          "package-manifest.json"
+                      ).decode("utf-8")
+                  )
+
+                  print()
+                  print("ledger.json:")
+                  print(
+                      archive.read(
+                          "ledger.json"
+                      ).decode("utf-8")
+                  )
+
+              report = verify_replay_package(
+                  package_path,
+                  verifier_name="TA-14 Workflow Diagnostic",
+                  verifier_version="1.0.0",
+              )
+
+              print()
+              print("COMPLETE VERIFICATION REPORT")
+              print("============================")
+              print(
+                  json.dumps(
+                      report.model_dump(mode="json"),
+                      indent=2,
+                      sort_keys=True,
+                  )
+              )
+
+              print()
+              print("CORE RESULT")
+              print("===========")
+              print(f"Overall status: {report.overall_status}")
+              print(
+                  "Independently replayable: "
+                  f"{report.independently_replayable}"
+              )
+              print(
+                  "Package integrity: "
+                  f"{report.package_integrity}"
+              )
+              print(
+                  "Signature integrity: "
+                  f"{report.signature_integrity}"
+              )
+              print(
+                  "Ledger integrity: "
+                  f"{report.ledger_integrity}"
+              )
+              print(
+                  "Evidence integrity: "
+                  f"{report.evidence_integrity}"
+              )
+              print(
+                  "Ruleset integrity: "
+                  f"{report.ruleset_integrity}"
+              )
+              print(
+                  "Action binding: "
+                  f"{report.action_binding}"
+              )
+              print(
+                  "Commit integrity: "
+                  f"{report.commit_integrity}"
+              )
+              print(
+                  "Execution correspondence: "
+                  f"{report.execution_correspondence}"
+              )
+              print(
+                  "Outcome correspondence: "
+                  f"{report.outcome_correspondence}"
+              )
+
+              print()
+              print("FAILURES")
+              print("========")
+
+              if report.failures:
+                  for failure in report.failures:
+                      print(f"- {failure}")
+              else:
+                  print("- None")
+
+              print()
+              print("WARNINGS")
+              print("========")
+
+              if report.warnings:
+                  for warning in report.warnings:
+                      print(f"- {warning}")
+              else:
+                  print("- None")
+
+              if not report.independently_replayable:
+                  raise SystemExit(
+                      "The diagnostic valid package did not verify."
+                  )
+          PY
+
+      - name: Generate replay samples
         run: |
           python - <<'PY'
           from pathlib import Path
